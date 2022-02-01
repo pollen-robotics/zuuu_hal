@@ -51,10 +51,10 @@ class MobileBase:
 
 
 class FollowMe(Node):
-    def __init__(self):
+    def __init__(self, no_joy=False):
         super().__init__('follow_me')
         self.get_logger().info("Starting follow me behavior!")
-
+        self.no_joy = no_joy
         self.laser_scan = None
 
         self.subscription = self.create_subscription(
@@ -69,14 +69,15 @@ class FollowMe(Node):
         pygame.init()
         pygame.joystick.init()
 
-        self.mode = FOLLOW_ME  # CONTROLLER
-        self.nb_joy = pygame.joystick.get_count()
-        if self.nb_joy < 1:
-            self.get_logger().error("No controller detected.")
-            self.emergency_shutdown()
-        self.get_logger().info("nb joysticks: {}".format(self.nb_joy))
-        self.j = pygame.joystick.Joystick(0)
-        # self.omnibase = MobileBase()
+        self.mode = CONTROLLER
+        if not(no_joy):
+            self.nb_joy = pygame.joystick.get_count()
+            if self.nb_joy < 1:
+                self.get_logger().error("No controller detected.")
+                self.emergency_shutdown()
+            self.get_logger().info("nb joysticks: {}".format(self.nb_joy))
+            self.j = pygame.joystick.Joystick(0)
+        self.omnibase = MobileBase()
         self.lin_speed_ratio = 0.2
         self.rot_speed_ratio = 0.1
         self.loop_freq = 100
@@ -100,7 +101,7 @@ class FollowMe(Node):
         d = ((d + math.pi) % (2 * math.pi)) - math.pi
         return d
 
-    def get_barycenter_offset(self, range_min, range_max, detection_angle, verbose=True):
+    def get_barycenter_offset(self, range_min, range_max, detection_angle, verbose=False):
         """Listen to the /scan LaserScan topic and outputs dlin_percent and dang_percent which represent how far away from the center of the chosen shape the barycenter of points is.
         """
 
@@ -118,6 +119,7 @@ class FollowMe(Node):
         """
         if self.laser_scan is None:
             return 0, 0
+
         absolute_range_max = 3.5
         half_angle = detection_angle/2
         # rospy.loginfo("Waiting for laser scan")
@@ -157,11 +159,11 @@ class FollowMe(Node):
             except:
                 # inf?
                 continue
-            # if d < range_min or d >= range_max:
-            #     continue
+            if d < range_min or d >= range_max:
+                continue
             angle = self.laser_scan.angle_min + index * angle_increment
-            # if abs(self.angle_diff(angle, 0)) > half_angle:
-            #     continue
+            if abs(self.angle_diff(angle, 0)) > half_angle:
+                continue
             x = int(round(width / 2 + d * pixel_per_meter * math.sin(angle)))
             y = int(round(d * pixel_per_meter * math.cos(angle)))
             sum_x += x
@@ -294,29 +296,34 @@ class FollowMe(Node):
             self.clock.tick(self.loop_freq)
             self.t0 = time.time()
 
-            self.tick_controller()
+            if not(self.no_joy):
+                self.tick_controller()
             if self.mode == CONTROLLER:
                 duty_cycles = self.cycle_from_joystick()
 
             elif self.mode == FOLLOW_ME:
                 dlin_percent, dang_percent = self.get_barycenter_offset(
                     0.5, 1.0, math.pi/5)
-                duty_cycles = self.ik_vel(dlin_percent, 0, dang_percent)
+                dlin_percent = -dlin_percent*self.lin_speed_ratio
+                dang_percent = dang_percent*self.rot_speed_ratio
+                duty_cycles = self.ik_vel(0, dlin_percent, dang_percent)
             else:
                 self.get_logger().warn("Can't happen ffs")
                 self.emergency_shutdown()
             # Actually sending the commands
-            # self.omnibase.back_wheel.set_duty_cycle(
-            #     duty_cycles[0])
-            # self.omnibase.left_wheel.set_duty_cycle(
-            #     duty_cycles[2])
-            # self.omnibase.right_wheel.set_duty_cycle(
-            #     duty_cycles[1])
+            self.get_logger().info("cycles : {}".format(duty_cycles))
+
+            self.omnibase.back_wheel.set_duty_cycle(
+                duty_cycles[0])
+            self.omnibase.left_wheel.set_duty_cycle(
+                duty_cycles[2])
+            self.omnibase.right_wheel.set_duty_cycle(
+                duty_cycles[1])
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = FollowMe()
+    node = FollowMe(no_joy=False)
 
     try:
         node.main()
