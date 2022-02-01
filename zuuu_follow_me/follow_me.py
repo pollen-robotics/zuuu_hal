@@ -8,6 +8,7 @@ import traceback
 import sys
 from pyvesc.VESC import MultiVESC
 from sensor_msgs.msg import LaserScan
+from rclpy.qos import ReliabilityPolicy, QoSProfile
 import cv2
 
 
@@ -55,25 +56,27 @@ class FollowMe(Node):
         self.get_logger().info("Starting follow me behavior!")
 
         self.laser_scan = None
-        self.create_subscription(
+
+        self.subscription = self.create_subscription(
             LaserScan,
             '/scan',
             self.scan_callback,
-            1)
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
+        self.subscription  # prevent unused variable warning
 
         # we could tick pygame with a callback:
         # self.create_timer(0.2, self.timer_callback)
         pygame.init()
         pygame.joystick.init()
 
-        self.mode = CONTROLLER
+        self.mode = FOLLOW_ME  # CONTROLLER
         self.nb_joy = pygame.joystick.get_count()
         if self.nb_joy < 1:
             self.get_logger().error("No controller detected.")
             self.emergency_shutdown()
         self.get_logger().info("nb joysticks: {}".format(self.nb_joy))
         self.j = pygame.joystick.Joystick(0)
-        self.omnibase = MobileBase()
+        # self.omnibase = MobileBase()
         self.lin_speed_ratio = 0.2
         self.rot_speed_ratio = 0.1
         self.loop_freq = 100
@@ -88,9 +91,10 @@ class FollowMe(Node):
         sys.exit(1)
 
     def scan_callback(self, msg):
+        # self.get_logger().warn("SCAN:\n{}\n".format(msg))
         self.laser_scan = msg
 
-    def angle_diff(a, b):
+    def angle_diff(self, a, b):
         # Returns the smallest distance between 2 angles
         d = a - b
         d = ((d + math.pi) % (2 * math.pi)) - math.pi
@@ -99,18 +103,22 @@ class FollowMe(Node):
     def get_barycenter_offset(self, range_min, range_max, detection_angle, verbose=True):
         """Listen to the /scan LaserScan topic and outputs dlin_percent and dang_percent which represent how far away from the center of the chosen shape the barycenter of points is.
         """
-        # frame_id: "base_scan"
-        # angle_min: 0.0
-        # angle_max: 6.2657318115234375
-        # angle_increment: 0.01745329238474369
-        # time_increment: 2.9880000511184335e-05
-        # scan_time: 0.0
-        # range_min: 0.11999999731779099
-        # range_max: 3.5
+
+        """ 
+        sensor_msgs.msg.LaserScan(header=std_msgs.msg.Header(stamp=builtin_interfaces.msg.Time(sec=1643673771
+         nanosec=826557127)
+         frame_id='laser')
+         angle_min=-3.1241390705108643
+         angle_max=3.1415927410125732
+         angle_increment=0.0019344649044796824
+         time_increment=3.075326094403863e-05
+         scan_time=0.09960980713367462
+         range_min=0.15000000596046448
+         range_max=30.0
+        """
         if self.laser_scan is None:
             return 0, 0
         absolute_range_max = 3.5
-        absolute_angle_max = 6.2657318115234375
         half_angle = detection_angle/2
         # rospy.loginfo("Waiting for laser scan")
         # laser_scan = rospy.wait_for_message("/tb3/scan", LaserScan, timeout=None)
@@ -144,16 +152,16 @@ class FollowMe(Node):
             d = 0
             try:
                 d = float(r)
-                if np.isnan(d):
+                if np.isnan(d) or math.isinf(d):
                     continue
             except:
                 # inf?
                 continue
-            if d < range_min or d >= range_max:
-                continue
+            # if d < range_min or d >= range_max:
+            #     continue
             angle = self.laser_scan.angle_min + index * angle_increment
-            if abs(self.angle_diff(angle, 0)) > half_angle:
-                continue
+            # if abs(self.angle_diff(angle, 0)) > half_angle:
+            #     continue
             x = int(round(width / 2 + d * pixel_per_meter * math.sin(angle)))
             y = int(round(d * pixel_per_meter * math.cos(angle)))
             sum_x += x
@@ -273,6 +281,8 @@ class FollowMe(Node):
         self.get_logger().info(
             "Started. Press O for emergency stop. Press triangle to change modes.")
         while True:
+            rclpy.spin_once(self)
+            duty_cycles = [0, 0, 0]
             t = time.time()
             dt = t - self.t0
             if dt == 0:
@@ -290,7 +300,7 @@ class FollowMe(Node):
 
             elif self.mode == FOLLOW_ME:
                 dlin_percent, dang_percent = self.get_barycenter_offset(
-                    0.3, 0.7, math.pi/5)
+                    0.5, 1.0, math.pi/5)
                 duty_cycles = self.ik_vel(dlin_percent, 0, dang_percent)
             else:
                 self.get_logger().warn("Can't happen ffs")
@@ -310,7 +320,7 @@ def main(args=None):
 
     try:
         node.main()
-        rclpy.spin(node)
+        # rclpy.spin(node)
     except Exception as e:
         traceback.print_exc()
     finally:
@@ -321,3 +331,33 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+
+""" 
+[INFO] [1643671042.990587227] [follow_me]: Potential freq: 1297Hz
+[INFO] [1643671043.001136696] [follow_me]: Potential freq: 741Hz
+[INFO] [1643671043.010510924] [follow_me]: Potential freq: 713Hz
+[INFO] [1643671043.020743756] [follow_me]: Potential freq: 904Hz
+[INFO] [1643671043.030887970] [follow_me]: Potential freq: 818Hz
+[INFO] [1643671043.041223440] [follow_me]: Potential freq: 756Hz
+[INFO] [1643671043.051828732] [follow_me]: Potential freq: 685Hz
+[INFO] [1643671043.062484272] [follow_me]: Potential freq: 702Hz
+[INFO] [1643671043.071588729] [follow_me]: Potential freq: 970Hz
+[INFO] [1643671043.081625597] [follow_me]: Potential freq: 961Hz
+[INFO] [1643671043.091707933] [follow_me]: Potential freq: 989Hz
+[INFO] [1643671043.101876070] [follow_me]: Potential freq: 938Hz
+[INFO] [1643671043.111723059] [follow_me]: Potential freq: 1102Hz
+[INFO] [1643671043.122672601] [follow_me]: Potential freq: 1012Hz
+[INFO] [1643671043.133037080] [follow_me]: Potential freq: 779Hz
+[INFO] [1643671043.142437099] [follow_me]: Potential freq: 722Hz
+[INFO] [1643671043.152603925] [follow_me]: Potential freq: 898Hz
+[INFO] [1643671043.163109891] [follow_me]: Potential freq: 701Hz
+[INFO] [1643671043.172639660] [follow_me]: Potential freq: 723Hz
+[INFO] [1643671043.183261719] [follow_me]: Potential freq: 683Hz
+[INFO] [1643671043.192364143] [follow_me]: Potential freq: 939Hz
+[INFO] [1643671043.202834129] [follow_me]: Potential freq: 703Hz
+[INFO] [1643671043.213251212] [follow_me]: Potential freq: 754Hz
+[INFO] [1643671043.223417465] [follow_me]: Potential freq: 891Hz
+[INFO] [1643671043.233478216] [follow_me]: Potential freq: 969Hz
+
+"""
