@@ -10,7 +10,13 @@ from pyvesc.VESC import MultiVESC
 from sensor_msgs.msg import LaserScan
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 import cv2
-
+""" 
+TODO: 
+tick main avec un timer. C'est la bonne façon de faire pour éviter le spin_once qui nous nerf à 10Hz.
+get_measurements
+set max speeds with controller
+log everything
+"""
 
 # Button  0 = X
 # Button  1 = O
@@ -28,6 +34,13 @@ import cv2
 
 CONTROLLER = 0
 FOLLOW_ME = 1
+
+
+def sign(x):
+    if x >= 0:
+        return 1
+    else:
+        return -1
 
 
 class MobileBase:
@@ -48,6 +61,12 @@ class MobileBase:
             serial_port=serial_port, vescs_params=params)
 
         self.left_wheel, self.right_wheel, self.back_wheel = self._multi_vesc.controllers
+        self.left_wheel_measurements, self.right_wheel_measurements, self.back_wheel_measurements = None, None, None
+
+    def read_all_measurements(self):
+        self.left_wheel_measurements = self.left_wheel.get_measurements()
+        self.right_wheel_measurements = self.right_wheel.get_measurements()
+        self.back_wheel_measurements = self.back_wheel.get_measurements()
 
 
 class FollowMe(Node):
@@ -62,10 +81,8 @@ class FollowMe(Node):
             '/scan',
             self.scan_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
-        self.subscription  # prevent unused variable warning
+        self.subscription  # prevent unused variable warning... JESUS WHAT HAVE WE BECOME
 
-        # we could tick pygame with a callback:
-        # self.create_timer(0.2, self.timer_callback)
         pygame.init()
         pygame.joystick.init()
 
@@ -78,11 +95,14 @@ class FollowMe(Node):
             self.get_logger().info("nb joysticks: {}".format(self.nb_joy))
             self.j = pygame.joystick.Joystick(0)
         self.omnibase = MobileBase()
-        self.lin_speed_ratio = 0.2
-        self.rot_speed_ratio = 0.1
+        self.lin_speed_ratio = 0.15
+        self.rot_speed_ratio = 0.15
         self.loop_freq = 100
         self.clock = pygame.time.Clock()
         self.t0 = time.time()
+        self.get_logger().info(
+            "Started. Press O for emergency stop. Press triangle to change modes.")
+        self.create_timer(0.01, self.main_tick)
 
     def emergency_shutdown(self):
         self.get_logger().warn("Emergency shutdown!")
@@ -217,6 +237,19 @@ class FollowMe(Node):
                 if self.j.get_button(1):
                     self.get_logger().warn("Pressed emergency stop!")
                     self.emergency_shutdown()
+                if self.j.get_button(6):  # l2
+                    self.get_logger().info("MORE translational speed!")
+                    self.lin_speed_ratio = min(1.0, self.lin_speed_ratio+0.05)
+                if self.j.get_button(7):  # r2
+                    self.get_logger().info("MORE rotational speed!")
+                    self.rot_speed_ratio = min(1.0, self.rot_speed_ratio+0.05)
+                if self.j.get_button(4):  # l1
+                    self.get_logger().info("LESS translational speed!")
+                    self.lin_speed_ratio = max(0.0, self.lin_speed_ratio-0.05)
+                if self.j.get_button(5):  # r1
+                    self.get_logger().info("LESS rotational speed!")
+                    self.rot_speed_ratio = max(0.0, self.rot_speed_ratio-0.05)
+
             elif event.type == pygame.JOYBUTTONUP:
                 pass
 
@@ -253,6 +286,8 @@ class FollowMe(Node):
             self.get_logger().info("Button {:>2} value: {}".format(i, button))
 
     def cycle_from_joystick(self):
+        if (self.no_joy):
+            return (0), (0), (0)
         cycle_max_t = self.lin_speed_ratio  # 0.2*factor
         cycle_max_r = self.rot_speed_ratio  # 0.1*factor
 
@@ -279,46 +314,92 @@ class FollowMe(Node):
 
         return (cycle_back), (cycle_right), (cycle_left)
 
-    def main(self):
-        self.get_logger().info(
-            "Started. Press O for emergency stop. Press triangle to change modes.")
-        while True:
-            rclpy.spin_once(self)
-            duty_cycles = [0, 0, 0]
-            t = time.time()
-            dt = t - self.t0
-            if dt == 0:
-                f = 0
-            else:
-                f = 1/dt
-            self.get_logger().info("Potential freq: {:.0f}Hz".format(f))
-            # Caping the actual freq
-            self.clock.tick(self.loop_freq)
-            self.t0 = time.time()
+    def format_measurements(self, measurements):
+        if measurements is None:
+            return "None"
+        to_print = ""
+        to_print += "temp_fet:{}\n".format(measurements.temp_fet)
+        to_print += "temp_motor:{}\n".format(measurements.temp_motor)
+        to_print += "avg_motor_current:{}\n".format(
+            measurements.avg_motor_current)
+        to_print += "avg_input_current:{}\n".format(
+            measurements.avg_input_current)
+        to_print += "avg_id:{}\n".format(measurements.avg_id)
+        to_print += "avg_iq:{}\n".format(measurements.avg_iq)
+        to_print += "duty_cycle_now:{}\n".format(measurements.duty_cycle_now)
+        to_print += "rpm:{}\n".format(measurements.rpm)
+        to_print += "v_in:{}\n".format(measurements.v_in)
+        to_print += "amp_hours:{}\n".format(measurements.amp_hours)
+        to_print += "amp_hours_charged:{}\n".format(
+            measurements.amp_hours_charged)
+        to_print += "watt_hours:{}\n".format(measurements.watt_hours)
+        to_print += "watt_hours_charged:{}\n".format(
+            measurements.watt_hours_charged)
+        to_print += "tachometer:{}\n".format(measurements.tachometer)
+        to_print += "tachometer_abs:{}\n".format(measurements.tachometer_abs)
+        to_print += "mc_fault_code:{}\n".format(measurements.mc_fault_code)
+        to_print += "pid_pos_now:{}\n".format(measurements.pid_pos_now)
+        to_print += "app_controller_id:{}\n".format(
+            measurements.app_controller_id)
+        to_print += "time_ms:{}\n".format(measurements.time_ms)
+        return to_print
 
-            if not(self.no_joy):
-                self.tick_controller()
-            if self.mode == CONTROLLER:
-                duty_cycles = self.cycle_from_joystick()
+    def print_all_measurements(self):
+        to_print = "\n*** back_wheel measurements:\n"
+        to_print += self.format_measurements(
+            self.omnibase.back_wheel_measurements)
+        to_print += "\n\n*** left_wheel:\n"
+        to_print += self.format_measurements(
+            self.omnibase.left_wheel_measurements)
+        to_print += "\n\n*** right_wheel:\n"
+        to_print += self.format_measurements(
+            self.omnibase.right_wheel_measurements)
+        self.get_logger().info("{}".format(to_print))
 
-            elif self.mode == FOLLOW_ME:
-                dlin_percent, dang_percent = self.get_barycenter_offset(
-                    0.5, 1.0, math.pi/5)
-                dlin_percent = -dlin_percent*self.lin_speed_ratio
-                dang_percent = dang_percent*self.rot_speed_ratio
-                duty_cycles = self.ik_vel(0, dlin_percent, dang_percent)
-            else:
-                self.get_logger().warn("Can't happen ffs")
-                self.emergency_shutdown()
-            # Actually sending the commands
-            self.get_logger().info("cycles : {}".format(duty_cycles))
+    def main_tick(self):
+        duty_cycles = [0, 0, 0]
+        t = time.time()
+        dt = t - self.t0
+        if dt == 0:
+            f = 0
+        else:
+            f = 1/dt
+        self.get_logger().info("Potential freq: {:.0f}Hz".format(f))
+        # Caping the actual freq
+        # self.clock.tick(self.loop_freq)
+        self.t0 = time.time()
+        self.omnibase.read_all_measurements()
+        # self.print_all_measurements()
 
-            self.omnibase.back_wheel.set_duty_cycle(
-                duty_cycles[0])
-            self.omnibase.left_wheel.set_duty_cycle(
-                duty_cycles[2])
-            self.omnibase.right_wheel.set_duty_cycle(
-                duty_cycles[1])
+        if not(self.no_joy):
+            self.tick_controller()
+        if self.mode == CONTROLLER:
+            duty_cycles = self.cycle_from_joystick()
+
+        elif self.mode == FOLLOW_ME:
+            dlin_percent, dang_percent = self.get_barycenter_offset(
+                0.75, 2.25, math.pi/4)
+            min_val = 0.1
+            tol = 0.2
+            dlin_percent = 0 if abs(
+                dlin_percent) < tol else 0.3*sign(dlin_percent)+0.7*dlin_percent
+            dang_percent = 0 if abs(
+                dang_percent) < tol else 0.3*sign(dang_percent)+0.7*dang_percent
+            dlin_percent = -dlin_percent*self.lin_speed_ratio
+            dang_percent = dang_percent*self.rot_speed_ratio
+            duty_cycles = self.ik_vel(0, dlin_percent, dang_percent)
+        else:
+            self.get_logger().warn("Can't happen ffs")
+            self.emergency_shutdown()
+        # Actually sending the commands
+        self.get_logger().info("cycles : {}".format(duty_cycles))
+
+        self.omnibase.back_wheel.set_duty_cycle(
+            duty_cycles[0])
+        self.omnibase.left_wheel.set_duty_cycle(
+            duty_cycles[2])
+        self.omnibase.right_wheel.set_duty_cycle(
+            duty_cycles[1])
 
 
 def main(args=None):
@@ -326,8 +407,7 @@ def main(args=None):
     node = FollowMe(no_joy=False)
 
     try:
-        node.main()
-        # rclpy.spin(node)
+        rclpy.spin(node)
     except Exception as e:
         traceback.print_exc()
     finally:
