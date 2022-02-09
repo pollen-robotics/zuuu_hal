@@ -73,15 +73,17 @@ class JoyTeleop(Node):
 
 
     def emergency_shutdown(self) :
-        twist = geometry_msgs.msg.Twist()
-        twist.linear.x = 0.0
-        twist.linear.y = 0.0
-        twist.linear.z = 0.0
-        twist.angular.x = 0.0
-        twist.angular.y = 0.0
-        twist.angular.z = 0.0
-        self.pub.publish(twist)
-        self.get_logger().warn("Emergency shutdown!")
+        self.get_logger().warn("Emergency shutdown! Spamming a Twist of 0s!")
+        while True :
+            twist = geometry_msgs.msg.Twist()
+            twist.linear.x = 0.0
+            twist.linear.y = 0.0
+            twist.linear.z = 0.0
+            twist.angular.x = 0.0
+            twist.angular.y = 0.0
+            twist.angular.z = 0.0
+            self.pub.publish(twist)
+            time.sleep(0.01)
 
 
     def tick_controller(self):

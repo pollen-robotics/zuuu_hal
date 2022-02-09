@@ -101,7 +101,7 @@ class ZuuuHAL(Node):
         cycle_left = (-y*np.cos(240*np.pi/180)) + \
             (x*np.sin(240*np.pi/180)) + rot
 
-        return (cycle_back), (cycle_right), (cycle_left)
+        return [cycle_back, cycle_right, cycle_left]
 
     def format_measurements(self, measurements):
         if measurements is None:
@@ -155,12 +155,12 @@ class ZuuuHAL(Node):
         return duty_cycles
 
 
-    def main_tick(self, verbose=True):
+    def main_tick(self, verbose=False):
         duty_cycles = [0, 0, 0]
         t = time.time()
 
         # If too much time without an order, the speeds of he wheels are set to 0 for safety.
-        if (t - self.cmd_vel_t0) < self.cmd_vel_timeout :
+        if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout) :
             x = self.cmd_vel.linear.x
             y = self.cmd_vel.linear.y
             theta = self.cmd_vel.angular.z
@@ -170,14 +170,15 @@ class ZuuuHAL(Node):
         # Actually sending the commands
         if verbose :
             self.get_logger().info("cycles : {}".format(duty_cycles))
-        # self.omnibase.back_wheel.set_duty_cycle(
-        #     duty_cycles[0])
-        # self.omnibase.left_wheel.set_duty_cycle(
-        #     duty_cycles[2])
-        # self.omnibase.right_wheel.set_duty_cycle(
-        #     duty_cycles[1])
+        self.get_logger().info("cycles : {}".format(duty_cycles))
+        self.omnibase.back_wheel.set_duty_cycle(
+            duty_cycles[0])
+        self.omnibase.left_wheel.set_duty_cycle(
+            duty_cycles[2])
+        self.omnibase.right_wheel.set_duty_cycle(
+            duty_cycles[1])
 
-        # Reading the measurements
+        # Reading the measurements (this is what takes most of the time, ~9ms)
         self.omnibase.read_all_measurements()
         if verbose :
             self.print_all_measurements()
