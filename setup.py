@@ -25,7 +25,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'follow_me = zuuu_follow_me.follow_me:main', 'hal = zuuu_follow_me.zuuu_hal:main', 'teleop_keyboard = zuuu_follow_me.zuuu_teleop_keyboard:main'
+            'follow_me = zuuu_follow_me.follow_me:main', 'hal = zuuu_follow_me.zuuu_hal:main', 'teleop_keyboard = zuuu_follow_me.zuuu_teleop_keyboard:main', 'teleop_joy = zuuu_follow_me.zuuu_teleop_joy:main'
         ],
     },
 )
