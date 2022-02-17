@@ -13,8 +13,6 @@ import sys
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 
 
-
-
 msg = """
 This node takes inputs from a controller and publishes them
 as Twist messages. Tested on a SONY Dual shock 4 controller.
@@ -50,7 +48,6 @@ def sign(x):
         return -1
 
 
-
 class JoyTeleop(Node):
     def __init__(self):
         super().__init__('zuuu_teleop_joy')
@@ -67,14 +64,16 @@ class JoyTeleop(Node):
         self.j = pygame.joystick.Joystick(0)
         self.lin_speed_ratio = 0.2
         self.rot_speed_ratio = 0.15
-        self.pub = self.create_publisher(geometry_msgs.msg.Twist, 'cmd_vel', 10)
+        # The joyticks dont come back at a perfect 0 position when released. Any abs(value) below min_joy_position will be assumed to be 0
+        self.min_joy_position = 0.03
+        self.pub = self.create_publisher(
+            geometry_msgs.msg.Twist, 'cmd_vel', 10)
         self.create_timer(0.01, self.main_tick)
         self.get_logger().info(msg)
 
-
-    def emergency_shutdown(self) :
+    def emergency_shutdown(self):
         self.get_logger().warn("Emergency shutdown! Spamming a Twist of 0s!")
-        while True :
+        while True:
             twist = geometry_msgs.msg.Twist()
             twist.linear.x = 0.0
             twist.linear.y = 0.0
@@ -84,7 +83,6 @@ class JoyTeleop(Node):
             twist.angular.z = 0.0
             self.pub.publish(twist)
             time.sleep(0.01)
-
 
     def tick_controller(self):
         for event in pygame.event.get():
@@ -96,16 +94,20 @@ class JoyTeleop(Node):
                     self.emergency_shutdown()
                 if self.j.get_button(6):  # l2
                     self.lin_speed_ratio = min(1.0, self.lin_speed_ratio+0.05)
-                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(
+                        self.lin_speed_ratio*100, self.rot_speed_ratio*100))
                 if self.j.get_button(7):  # r2
                     self.rot_speed_ratio = min(1.0, self.rot_speed_ratio+0.05)
-                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(
+                        self.lin_speed_ratio*100, self.rot_speed_ratio*100))
                 if self.j.get_button(4):  # l1
                     self.lin_speed_ratio = max(0.0, self.lin_speed_ratio-0.05)
-                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(
+                        self.lin_speed_ratio*100, self.rot_speed_ratio*100))
                 if self.j.get_button(5):  # r1
                     self.rot_speed_ratio = max(0.0, self.rot_speed_ratio-0.05)
-                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(
+                        self.lin_speed_ratio*100, self.rot_speed_ratio*100))
             elif event.type == pygame.JOYBUTTONUP:
                 pass
 
@@ -145,26 +147,37 @@ class JoyTeleop(Node):
         cycle_max_t = self.lin_speed_ratio  # 0.2*factor
         cycle_max_r = self.rot_speed_ratio  # 0.1*factor
 
-        x = -self.j.get_axis(1) * cycle_max_t
-        y = -self.j.get_axis(0) * cycle_max_t
-        rot = -self.j.get_axis(3) * cycle_max_r
+        if abs(self.j.get_axis(1)) < self.min_joy_position:
+            x = 0.0
+        else:
+            x = -self.j.get_axis(1) * cycle_max_t
+
+        if abs(self.j.get_axis(0)) < self.min_joy_position:
+            y = 0.0
+        else:
+            y = -self.j.get_axis(0) * cycle_max_t
+
+        if abs(self.j.get_axis(3)) < self.min_joy_position:
+            rot = 0.0
+        else:
+            rot = -self.j.get_axis(3) * cycle_max_r
 
         return x, y, rot
-
 
     def main_tick(self):
         self.tick_controller()
         x, y, theta = self.speeds_from_joystick()
         twist = geometry_msgs.msg.Twist()
-        twist.linear.x = x 
-        twist.linear.y = y 
+        twist.linear.x = x
+        twist.linear.y = y
         twist.linear.z = 0.0
         twist.angular.x = 0.0
         twist.angular.y = 0.0
         twist.angular.z = theta
         self.pub.publish(twist)
-        self.get_logger().info("\nx_vel: {:.1f}%, y_vel: {:.1f}%, theta_vel: {:.1f}%.\nMax lin_vel: {:.1f}%, max rot_vel: {:.1f}%".format(x*100, y*100, theta*100, self.lin_speed_ratio*100, self.rot_speed_ratio*100))
-        
+        self.get_logger().info("\nx_vel: {:.1f}%, y_vel: {:.1f}%, theta_vel: {:.1f}%.\nMax lin_vel: {:.1f}%, max rot_vel: {:.1f}%".format(
+            x*100, y*100, theta*100, self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+
 
 def main():
     rclpy.init()
@@ -182,7 +195,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
