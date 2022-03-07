@@ -7,8 +7,16 @@ import traceback
 import sys
 from pyvesc.VESC import MultiVESC
 from example_interfaces.msg import Float32
+from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 from rclpy.qos import ReliabilityPolicy, QoSProfile
+from rclpy.constants import S_TO_NS
+
+# sudo apt install ros-foxy-tf-transformations
+# sudo pip3 install transforms3d
+import tf_transformations
+# q = tf_transformations.quaternion_from_euler(r, p, y)
+# r, p, y = tf_transformations.euler_from_quaternion(quaternion)
 
 
 """
@@ -61,16 +69,29 @@ class ZuuuHAL(Node):
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.subscription  # prevent unused variable warning... JESUS WHAT HAVE WE BECOME
         self.pub_back_wheel_rpm = self.create_publisher(
-            Float32, 'back_wheel_rpm', 10)
+            Float32, 'back_wheel_rpm', 2)
         self.pub_left_wheel_rpm = self.create_publisher(
-            Float32, 'left_wheel_rpm', 10)
+            Float32, 'left_wheel_rpm', 2)
         self.pub_right_wheel_rpm = self.create_publisher(
-            Float32, 'right_wheel_rpm', 10)
+            Float32, 'right_wheel_rpm', 2)
+
+        self.pub_odom = self.create_publisher(
+            Odometry, 'odom', 2)
 
         self.omnibase = MobileBase()
         self.max_duty_cyle = 0.2  # max is 1
         self.cmd_vel_timeout = 0.2
         self.cmd_vel = None
+        self.x_odom = 0.0
+        self.y_odom = 0.0
+        self.theta_odom = 0.0
+        self.lin_vel = 0.0
+        self.ang_vel = 0.0
+        self.x_vel = 0.0
+        self.y_vel = 0.0
+        self.theta_vel = 0.0
+        self.old_measure_timestamp = self.get_clock().now()
+        self.measure_timestamp = self.get_clock().now()  # .to_msg()
         # *sigh* if needed use: https://github.com/ros2/rclpy/blob/master/rclpy/test/test_time.py
         self.cmd_vel_t0 = time.time()
         self.get_logger().info(
@@ -97,7 +118,7 @@ class ZuuuHAL(Node):
         return d
 
     def ik_vel(self, x, y, rot):
-        """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame) and outputs the PWM to apply to each of the 3 motors in an omni setup 
+        """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame) and outputs the PWM to apply to each of the 3 motors in an omni setup
 
         Args:
             x (float): x speed (between -1 and 1). Positive "in front" of the robot.
@@ -115,7 +136,7 @@ class ZuuuHAL(Node):
 
     def dk_vel(self, rot_l, rot_r, rot_b):
         """Takes the 3 rotational speeds (in rpm) of the 3 wheels and outputs the x linear speed, y, linear speed and rotational speed
-        in the robot egocentric frame 
+        in the robot egocentric frame
 
         Args:
             rot_l (float): rpm speed of the left wheel
@@ -215,6 +236,57 @@ class ZuuuHAL(Node):
         else:
             self.omnibase.right_wheel_nones += 1
 
+    def publish_odometry(self):
+        odom = Odometry()
+        odom.header.frame_id = "odom"
+        odom.header.stamp = self.measure_timestamp.to_msg()
+        odom.child_frame_id = "base_footprint"
+        odom.pose.pose.position.x = self.x_odom
+        odom.pose.pose.position.y = self.y_odom
+        odom.pose.pose.position.z = 0.0
+        q = tf_transformations.quaternion_from_euler(0.0, 0.0, self.theta_odom)
+        odom.pose.pose.orientation.x = q[0]
+        odom.pose.pose.orientation.y = q[1]
+        odom.pose.pose.orientation.z = q[2]
+        odom.pose.pose.orientation.w = q[3]
+
+        # TODO tune these numbers
+        odom.pose.covariance = np.diag(
+            [1e-2, 1e-2, 1e-2, 1e3, 1e3, 1e-1]).ravel()
+        odom.twist.twist.linear.x = self.x_vel
+        odom.twist.twist.linear.y = self.y_vel
+        odom.twist.twist.angular.z = self.theta_vel
+
+        odom.twist.covariance = np.diag(
+            [1e-2, 1e3, 1e3, 1e3, 1e3, 1e-2]).ravel()
+        self.pub_odom.publish(odom)
+
+    def tick_odom(self):
+        # Local speeds in egocentric frame
+        self.x_vel, self.y_vel, self.theta_vel = self.dk_vel(self.omnibase.left_wheel_rpm,
+                                                             self.omnibase.right_wheel_rpm, self.omnibase.back_wheel_rpm)
+        self.get_logger().info(
+            "IK vel : {:.0f}, {:.0f}, {:.0f}".format(self.x_vel, self.y_vel, self.theta_vel))
+        # Applying the small displacement in the world-fixed odom frame (simple 2D rotation)
+        dt_duration = (self.measure_timestamp - self.old_measure_timestamp)
+        dt_seconds = dt_duration.nanoseconds/S_TO_NS
+        dx = (self.x_vel * math.cos(self.theta_odom) - self.y_vel *
+              math.sin(self.theta_odom)) * dt_seconds
+        dy = (self.x_vel * math.sin(self.theta_odom) + self.y_vel *
+              math.cos(self.theta_odom)) * dt_seconds
+        dtheta = self.theta_vel*dt_seconds
+        self.x_odom += dx
+        self.y_odom += dy
+        self.theta_odom += dtheta
+
+        self.lin_vel = np.sqrt(dx**2 + dy**2) / dt_seconds
+        self.ang_vel = self.theta_vel
+
+        self.publish_odometry()
+        # TODO publish the TF :
+        # https://docs.ros.org/en/rolling/Tutorials/Tf2/Writing-A-Tf2-Broadcaster-Py.html
+        # http://wiki.ros.org/navigation/Tutorials/RobotSetup/Odom/
+
     def limit_duty_cycles(self, duty_cycles):
         # Between +- max_duty_cyle
         for i in range(len(duty_cycles)):
@@ -246,6 +318,9 @@ class ZuuuHAL(Node):
         self.omnibase.right_wheel.set_duty_cycle(
             duty_cycles[1])
 
+        self.old_measure_timestamp = self.measure_timestamp
+        self.measure_timestamp = self.get_clock().now()  # .to_msg()
+
         # Reading the measurements (this is what takes most of the time, ~9ms)
         self.omnibase.read_all_measurements()
         self.update_wheel_speeds()
@@ -254,10 +329,7 @@ class ZuuuHAL(Node):
             self.print_all_measurements()
 
         self.publish_wheel_speeds()
-        x_vel, y_vel, theta_vel = self.dk_vel(self.omnibase.left_wheel_rpm,
-                                              self.omnibase.right_wheel_rpm, self.omnibase.back_wheel_rpm)
-        self.get_logger().info(
-            "IK vel : {:.0f}, {:.0f}, {:.0f}".format(x_vel, y_vel, theta_vel))
+        self.tick_odom()
 
         # Time measurement
         dt = time.time() - t
