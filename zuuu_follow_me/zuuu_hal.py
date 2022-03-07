@@ -6,7 +6,7 @@ import numpy as np
 import traceback
 import sys
 from pyvesc.VESC import MultiVESC
-from sensor_msgs.msg import LaserScan
+from example_interfaces.msg import Float32
 from geometry_msgs.msg import Twist
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 
@@ -17,6 +17,7 @@ Zuuu's hardware = 3 motor controllers. The LIDAR, camera and other sensors are N
 Specificaly, this node will periodically read the selected measurements from the controllers of the wheels (speed, temperature, IMUs, etc) and publish them into the adequate topics (odom, etc).
 This node will also subscribe to /cmd_vel and write commands to the 3 motor controllers.
 """
+
 
 class MobileBase:
     def __init__(
@@ -37,6 +38,10 @@ class MobileBase:
 
         self.left_wheel, self.right_wheel, self.back_wheel = self._multi_vesc.controllers
         self.left_wheel_measurements, self.right_wheel_measurements, self.back_wheel_measurements = None, None, None
+        self.left_wheel_nones, self.right_wheel_nones, self.back_wheel_nones = 0, 0, 0
+        self.wheel_radius = 0.21
+        self.wheel_to_center = 0.188
+        self.left_wheel_rpm, self.right_wheel_rpm, self.back_wheel_rpm = 0, 0, 0
 
     def read_all_measurements(self):
         self.left_wheel_measurements = self.left_wheel.get_measurements()
@@ -55,9 +60,15 @@ class ZuuuHAL(Node):
             self.cmd_vel_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.subscription  # prevent unused variable warning... JESUS WHAT HAVE WE BECOME
+        self.pub_back_wheel_rpm = self.create_publisher(
+            Float32, 'back_wheel_rpm', 10)
+        self.pub_left_wheel_rpm = self.create_publisher(
+            Float32, 'left_wheel_rpm', 10)
+        self.pub_right_wheel_rpm = self.create_publisher(
+            Float32, 'right_wheel_rpm', 10)
 
         self.omnibase = MobileBase()
-        self.max_duty_cyle = 0.2 # max is 1
+        self.max_duty_cyle = 0.2  # max is 1
         self.cmd_vel_timeout = 0.2
         self.cmd_vel = None
         # *sigh* if needed use: https://github.com/ros2/rclpy/blob/master/rclpy/test/test_time.py
@@ -85,14 +96,13 @@ class ZuuuHAL(Node):
         d = ((d + math.pi) % (2 * math.pi)) - math.pi
         return d
 
-
     def ik_vel(self, x, y, rot):
         """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame) and outputs the PWM to apply to each of the 3 motors in an omni setup 
 
         Args:
-            x (float): x speed (between 0 and 1). Positive "in front" of the robot.
-            y (float): y speed (between 0 and 1). Positive "to the left" of the robot.
-            rot (float): rotational speed (between 0 and 1). Positive counter-clock wise.
+            x (float): x speed (between -1 and 1). Positive "in front" of the robot.
+            y (float): y speed (between -1 and 1). Positive "to the left" of the robot.
+            rot (float): rotational speed (between -1 and 1). Positive counter-clock wise.
         """
 
         cycle_back = -y + rot
@@ -102,6 +112,26 @@ class ZuuuHAL(Node):
             (x*np.sin(240*np.pi/180)) + rot
 
         return [cycle_back, cycle_right, cycle_left]
+
+    def dk_vel(self, rot_l, rot_r, rot_b):
+        """Takes the 3 rotational speeds (in rpm) of the 3 wheels and outputs the x linear speed, y, linear speed and rotational speed
+        in the robot egocentric frame 
+
+        Args:
+            rot_l (float): rpm speed of the left wheel
+            rot_r (float): rpm speed of the right wheel
+            rot_b (float): rpm speed of the back wheel
+        """
+        # rpm to rad/s then m/s
+        speed_l = (2*math.pi*rot_l/60)*self.omnibase.wheel_radius
+        speed_r = (2*math.pi*rot_r/60)*self.omnibase.wheel_radius
+        speed_b = (2*math.pi*rot_b/60)*self.omnibase.wheel_radius
+        w_angle = math.pi/3
+        x_vel = -speed_l*math.sin(w_angle)+speed_r*math.sin(w_angle)
+        y_vel = - speed_b + speed_l*math.cos(w_angle)+speed_r*math.cos(w_angle)
+        theta_vel = (speed_l+speed_r+speed_b)/self.omnibase.wheel_to_center
+
+        return [x_vel, y_vel, theta_vel]
 
     def format_measurements(self, measurements):
         if measurements is None:
@@ -143,34 +173,72 @@ class ZuuuHAL(Node):
         to_print += "\n\n*** right_wheel:\n"
         to_print += self.format_measurements(
             self.omnibase.right_wheel_measurements)
+        to_print += "\n\n Nones left:{}, right:{}, back:{}".format(
+            self.omnibase.left_wheel_nones, self.omnibase.right_wheel_nones, self.omnibase.back_wheel_nones)
+
         self.get_logger().info("{}".format(to_print))
+
+    def publish_wheel_speeds(self):
+        # If the measurements are None, not publishing
+        if self.omnibase.back_wheel_measurements is not None:
+            rpm_back = Float32()
+            rpm_back.data = float(self.omnibase.back_wheel_measurements.rpm)
+            self.pub_back_wheel_rpm.publish(rpm_back)
+
+        if self.omnibase.left_wheel_measurements is not None:
+            rpm_left = Float32()
+            rpm_left.data = float(self.omnibase.left_wheel_measurements.rpm)
+            self.pub_left_wheel_rpm.publish(rpm_left)
+
+        if self.omnibase.right_wheel_measurements is not None:
+            rpm_right = Float32()
+            rpm_right.data = float(self.omnibase.right_wheel_measurements.rpm)
+            self.pub_right_wheel_rpm.publish(rpm_right)
+
+    def update_wheel_speeds(self):
+        # Keeping a local value of the wheel speeds to handle None measurements (we'll use the last valid measure)
+        if self.omnibase.back_wheel_measurements is not None:
+            self.omnibase.back_wheel_rpm = float(
+                self.omnibase.back_wheel_measurements.rpm)
+        else:
+            self.omnibase.back_wheel_nones += 1
+
+        if self.omnibase.left_wheel_measurements is not None:
+            self.omnibase.left_wheel_rpm = float(
+                self.omnibase.left_wheel_measurements.rpm)
+        else:
+            self.omnibase.left_wheel_nones += 1
+
+        if self.omnibase.right_wheel_measurements is not None:
+            self.omnibase.right_wheel_rpm = float(
+                self.omnibase.right_wheel_measurements.rpm)
+        else:
+            self.omnibase.right_wheel_nones += 1
 
     def limit_duty_cycles(self, duty_cycles):
         # Between +- max_duty_cyle
-        for i in range(len(duty_cycles)) :
-            if duty_cycles[i] < 0 :
-                 duty_cycles[i] = max(-self.max_duty_cyle, duty_cycles[i])
-            else :
-                 duty_cycles[i] = min(self.max_duty_cyle, duty_cycles[i])
+        for i in range(len(duty_cycles)):
+            if duty_cycles[i] < 0:
+                duty_cycles[i] = max(-self.max_duty_cyle, duty_cycles[i])
+            else:
+                duty_cycles[i] = min(self.max_duty_cyle, duty_cycles[i])
         return duty_cycles
 
-
-    def main_tick(self, verbose=False):
+    def main_tick(self, verbose=True):
         duty_cycles = [0, 0, 0]
         t = time.time()
 
         # If too much time without an order, the speeds of he wheels are set to 0 for safety.
-        if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout) :
+        if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
             x = self.cmd_vel.linear.x
             y = self.cmd_vel.linear.y
             theta = self.cmd_vel.angular.z
             duty_cycles = self.ik_vel(x, y, theta)
         duty_cycles = self.limit_duty_cycles(duty_cycles)
-            
+
         # Actually sending the commands
-        if verbose :
+        if verbose:
             self.get_logger().info("cycles : {}".format(duty_cycles))
-        self.get_logger().info("cycles : {}".format(duty_cycles))
         self.omnibase.back_wheel.set_duty_cycle(
             duty_cycles[0])
         self.omnibase.left_wheel.set_duty_cycle(
@@ -180,17 +248,26 @@ class ZuuuHAL(Node):
 
         # Reading the measurements (this is what takes most of the time, ~9ms)
         self.omnibase.read_all_measurements()
-        if verbose :
+        self.update_wheel_speeds()
+
+        if verbose:
             self.print_all_measurements()
-        
+
+        self.publish_wheel_speeds()
+        x_vel, y_vel, theta_vel = self.dk_vel(self.omnibase.left_wheel_rpm,
+                                              self.omnibase.right_wheel_rpm, self.omnibase.back_wheel_rpm)
+        self.get_logger().info(
+            "IK vel : {:.0f}, {:.0f}, {:.0f}".format(x_vel, y_vel, theta_vel))
+
         # Time measurement
         dt = time.time() - t
         if dt == 0:
             f = 0
         else:
             f = 1/dt
-        if verbose :
-            self.get_logger().info("zuuu tick potential freq: {:.0f}Hz (dt={:.0f}ms)".format(f, 1000*dt))
+        if verbose:
+            self.get_logger().info(
+                "zuuu tick potential freq: {:.0f}Hz (dt={:.0f}ms)".format(f, 1000*dt))
 
 
 def main(args=None):
@@ -209,4 +286,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-

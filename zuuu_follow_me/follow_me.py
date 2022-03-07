@@ -12,9 +12,6 @@ from rclpy.qos import ReliabilityPolicy, QoSProfile
 import cv2
 """ 
 TODO: 
-tick main avec un timer. C'est la bonne façon de faire pour éviter le spin_once qui nous nerf à 10Hz.
-get_measurements
-set max speeds with controller
 log everything
 """
 
