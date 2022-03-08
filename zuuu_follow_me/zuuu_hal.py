@@ -12,11 +12,11 @@ from geometry_msgs.msg import Twist
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 from rclpy.constants import S_TO_NS
 from collections import deque
-
-
+from geometry_msgs.msg import TransformStamped
+from tf2_ros import TransformBroadcaster
+import tf_transformations
 # sudo apt install ros-foxy-tf-transformations
 # sudo pip3 install transforms3d
-import tf_transformations
 # q = tf_transformations.quaternion_from_euler(r, p, y)
 # r, p, y = tf_transformations.euler_from_quaternion(quaternion)
 
@@ -95,6 +95,8 @@ class ZuuuHAL(Node):
 
         self.pub_odom = self.create_publisher(
             Odometry, 'odom', 2)
+        # Initialize the transform broadcaster
+        self.br = TransformBroadcaster(self)
 
         self.omnibase = MobileBase()
         self.max_duty_cyle = 0.2  # max is 1
@@ -103,13 +105,14 @@ class ZuuuHAL(Node):
         self.x_odom = 0.0
         self.y_odom = 0.0
         self.theta_odom = 0.0
-        self.lin_vel = 0.0
-        self.ang_vel = 0.0
+        self.vx = 0.0
+        self.vy = 0.0
+        self.vtheta = 0.0
         self.x_vel = 0.0
         self.y_vel = 0.0
         self.theta_vel = 0.0
         self.old_measure_timestamp = self.get_clock().now()
-        self.measure_timestamp = self.get_clock().now()  # .to_msg()
+        self.measure_timestamp = self.get_clock().now()
         # *sigh* if needed use: https://github.com/ros2/rclpy/blob/master/rclpy/test/test_time.py
         self.cmd_vel_t0 = time.time()
         self.get_logger().info(
@@ -271,7 +274,8 @@ class ZuuuHAL(Node):
         else:
             self.omnibase.right_wheel_nones += 1
 
-    def publish_odometry(self):
+    def publish_odometry_and_tf(self):
+        # Odom
         odom = Odometry()
         odom.header.frame_id = "odom"
         odom.header.stamp = self.measure_timestamp.to_msg()
@@ -279,6 +283,10 @@ class ZuuuHAL(Node):
         odom.pose.pose.position.x = self.x_odom
         odom.pose.pose.position.y = self.y_odom
         odom.pose.pose.position.z = 0.0
+        odom.twist.twist.linear.x = self.vx
+        odom.twist.twist.linear.y = self.vy
+        odom.twist.twist.angular.z = self.vtheta
+
         q = tf_transformations.quaternion_from_euler(0.0, 0.0, self.theta_odom)
         odom.pose.pose.orientation.x = q[0]
         odom.pose.pose.orientation.y = q[1]
@@ -295,6 +303,22 @@ class ZuuuHAL(Node):
         odom.twist.covariance = np.diag(
             [1e-2, 1e3, 1e3, 1e3, 1e3, 1e-2]).ravel()
         self.pub_odom.publish(odom)
+
+        # TF
+        t = TransformStamped()
+        t.header.stamp = self.measure_timestamp.to_msg()
+        t.header.frame_id = 'odom'
+        t.child_frame_id = 'base_footprint'
+
+        t.transform.translation.x = self.x_odom
+        t.transform.translation.y = self.y_odom
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+
+        self.br.sendTransform(t)
 
     def tick_odom(self):
         # Local speeds in egocentric frame. Care, "rpm" are actually erpm and need to be devided by half the amount of magnetic poles to get the actual rpm.
@@ -314,13 +338,11 @@ class ZuuuHAL(Node):
         self.y_odom += dy
         self.theta_odom += dtheta
 
-        self.lin_vel = np.sqrt(dx**2 + dy**2) / dt_seconds
-        self.ang_vel = self.theta_vel
+        self.vx = dx / dt_seconds
+        self.vy = dy / dt_seconds
+        self.vtheta = dtheta / dt_seconds
 
-        self.publish_odometry()
-        # TODO publish the TF :
-        # https://docs.ros.org/en/rolling/Tutorials/Tf2/Writing-A-Tf2-Broadcaster-Py.html
-        # http://wiki.ros.org/navigation/Tutorials/RobotSetup/Odom/
+        self.publish_odometry_and_tf()
 
     def limit_duty_cycles(self, duty_cycles):
         # Between +- max_duty_cyle
@@ -354,7 +376,7 @@ class ZuuuHAL(Node):
             duty_cycles[1])
 
         self.old_measure_timestamp = self.measure_timestamp
-        self.measure_timestamp = self.get_clock().now()  # .to_msg()
+        self.measure_timestamp = self.get_clock().now()
 
         # Reading the measurements (this is what takes most of the time, ~9ms)
         self.omnibase.read_all_measurements()
@@ -365,6 +387,10 @@ class ZuuuHAL(Node):
 
         self.publish_wheel_speeds()
         self.tick_odom()
+
+        if verbose:
+            self.get_logger().info("x_odom {}, y_odom {}, theta_odom {}".format(
+                self.x_odom, self.y_odom, self.theta_odom))
 
         # Time measurement
         dt = time.time() - t
