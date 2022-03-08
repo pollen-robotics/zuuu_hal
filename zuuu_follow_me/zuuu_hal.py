@@ -11,6 +11,8 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 from rclpy.constants import S_TO_NS
+from collections import deque
+
 
 # sudo apt install ros-foxy-tf-transformations
 # sudo pip3 install transforms3d
@@ -25,6 +27,11 @@ Zuuu's hardware = 3 motor controllers. The LIDAR, camera and other sensors are N
 Specificaly, this node will periodically read the selected measurements from the controllers of the wheels (speed, temperature, IMUs, etc) and publish them into the adequate topics (odom, etc).
 This node will also subscribe to /cmd_vel and write commands to the 3 motor controllers.
 """
+
+# Interesting stuff can be found in Modern Robotics' chapters:
+# 13.2 Omnidirectional Wheeled Mobile Robots
+# 13.4 Odometry
+# /!\ Our robot frame is different. Matching between their names (left) and ours (right): xb=y, yb-x, u1=uB, u2=uL, u3=uR
 
 
 class MobileBase:
@@ -47,14 +54,25 @@ class MobileBase:
         self.left_wheel, self.right_wheel, self.back_wheel = self._multi_vesc.controllers
         self.left_wheel_measurements, self.right_wheel_measurements, self.back_wheel_measurements = None, None, None
         self.left_wheel_nones, self.right_wheel_nones, self.back_wheel_nones = 0, 0, 0
-        self.wheel_radius = 0.21
-        self.wheel_to_center = 0.188
+        self.wheel_radius = 0.21/2.0
+        self.wheel_to_center = 0.19588  # 0.188
+        self.half_poles = 15.0
         self.left_wheel_rpm, self.right_wheel_rpm, self.back_wheel_rpm = 0, 0, 0
+        self.left_wheel_avg_rpm, self.right_wheel_avg_rpm, self.back_wheel_avg_rpm = 0, 0, 0
+        self.left_wheel_rpm_deque, self.right_wheel_rpm_deque, self.back_wheel_rpm_deque = deque(
+            [], 10), deque([], 10), deque([], 10)
 
     def read_all_measurements(self):
         self.left_wheel_measurements = self.left_wheel.get_measurements()
         self.right_wheel_measurements = self.right_wheel.get_measurements()
         self.back_wheel_measurements = self.back_wheel.get_measurements()
+
+    def deque_to_avg(self, deque):
+        sum = 0
+        len = deque.maxlen
+        for i in deque:
+            sum += i
+        return sum/float(len)
 
 
 class ZuuuHAL(Node):
@@ -98,7 +116,7 @@ class ZuuuHAL(Node):
             "zuuu_hal started, you can write to cmd_vel to move the robot")
         self.get_logger().info("List of published topics: TODO")
 
-        self.create_timer(0.01, self.main_tick)
+        self.create_timer(0.012, self.main_tick)
 
     def emergency_shutdown(self):
         self.omnibase.back_wheel.set_duty_cycle(0)
@@ -147,10 +165,12 @@ class ZuuuHAL(Node):
         speed_l = (2*math.pi*rot_l/60)*self.omnibase.wheel_radius
         speed_r = (2*math.pi*rot_r/60)*self.omnibase.wheel_radius
         speed_b = (2*math.pi*rot_b/60)*self.omnibase.wheel_radius
-        w_angle = math.pi/3
-        x_vel = -speed_l*math.sin(w_angle)+speed_r*math.sin(w_angle)
-        y_vel = - speed_b + speed_l*math.cos(w_angle)+speed_r*math.cos(w_angle)
-        theta_vel = (speed_l+speed_r+speed_b)/self.omnibase.wheel_to_center
+
+        x_vel = -speed_l*(1/(2*math.sin(math.pi/3))) + \
+            speed_r*(1/(2*math.sin(math.pi/3)))
+        y_vel = -speed_b*2/3.0 + speed_l*1/3.0 + speed_r*1/3.0
+        theta_vel = (speed_l + speed_r + speed_b) / \
+            (3*self.omnibase.wheel_to_center)
 
         return [x_vel, y_vel, theta_vel]
 
@@ -196,8 +216,11 @@ class ZuuuHAL(Node):
             self.omnibase.right_wheel_measurements)
         to_print += "\n\n Nones left:{}, right:{}, back:{}".format(
             self.omnibase.left_wheel_nones, self.omnibase.right_wheel_nones, self.omnibase.back_wheel_nones)
+        to_print += "\n\n AVG RPM left:{:.2f}, right:{:.2f}, back:{:.2f}".format(
+            self.omnibase.left_wheel_avg_rpm/self.omnibase.half_poles, self.omnibase.right_wheel_avg_rpm/self.omnibase.half_poles, self.omnibase.back_wheel_avg_rpm/self.omnibase.half_poles)
 
         self.get_logger().info("{}".format(to_print))
+        # 20 tours en 35s, avg_rpm ~=34
 
     def publish_wheel_speeds(self):
         # If the measurements are None, not publishing
@@ -219,20 +242,32 @@ class ZuuuHAL(Node):
     def update_wheel_speeds(self):
         # Keeping a local value of the wheel speeds to handle None measurements (we'll use the last valid measure)
         if self.omnibase.back_wheel_measurements is not None:
-            self.omnibase.back_wheel_rpm = float(
+            value = float(
                 self.omnibase.back_wheel_measurements.rpm)
+            self.omnibase.back_wheel_rpm = value
+            self.omnibase.back_wheel_rpm_deque.appendleft(value)
+            self.omnibase.back_wheel_avg_rpm = self.omnibase.deque_to_avg(
+                self.omnibase.back_wheel_rpm_deque)
         else:
             self.omnibase.back_wheel_nones += 1
 
         if self.omnibase.left_wheel_measurements is not None:
-            self.omnibase.left_wheel_rpm = float(
+            value = float(
                 self.omnibase.left_wheel_measurements.rpm)
+            self.omnibase.left_wheel_rpm = value
+            self.omnibase.left_wheel_rpm_deque.appendleft(value)
+            self.omnibase.left_wheel_avg_rpm = self.omnibase.deque_to_avg(
+                self.omnibase.left_wheel_rpm_deque)
         else:
             self.omnibase.left_wheel_nones += 1
 
         if self.omnibase.right_wheel_measurements is not None:
-            self.omnibase.right_wheel_rpm = float(
+            value = float(
                 self.omnibase.right_wheel_measurements.rpm)
+            self.omnibase.right_wheel_rpm = value
+            self.omnibase.right_wheel_rpm_deque.appendleft(value)
+            self.omnibase.right_wheel_avg_rpm = self.omnibase.deque_to_avg(
+                self.omnibase.right_wheel_rpm_deque)
         else:
             self.omnibase.right_wheel_nones += 1
 
@@ -262,11 +297,11 @@ class ZuuuHAL(Node):
         self.pub_odom.publish(odom)
 
     def tick_odom(self):
-        # Local speeds in egocentric frame
-        self.x_vel, self.y_vel, self.theta_vel = self.dk_vel(self.omnibase.left_wheel_rpm,
-                                                             self.omnibase.right_wheel_rpm, self.omnibase.back_wheel_rpm)
+        # Local speeds in egocentric frame. Care, "rpm" are actually erpm and need to be devided by half the amount of magnetic poles to get the actual rpm.
+        self.x_vel, self.y_vel, self.theta_vel = self.dk_vel(self.omnibase.left_wheel_rpm/self.omnibase.half_poles,
+                                                             self.omnibase.right_wheel_rpm/self.omnibase.half_poles, self.omnibase.back_wheel_rpm/self.omnibase.half_poles)
         self.get_logger().info(
-            "IK vel : {:.0f}, {:.0f}, {:.0f}".format(self.x_vel, self.y_vel, self.theta_vel))
+            "IK vel : {:.2f}, {:.2f}, {:.2f}".format(self.x_vel, self.y_vel, self.theta_vel))
         # Applying the small displacement in the world-fixed odom frame (simple 2D rotation)
         dt_duration = (self.measure_timestamp - self.old_measure_timestamp)
         dt_seconds = dt_duration.nanoseconds/S_TO_NS
