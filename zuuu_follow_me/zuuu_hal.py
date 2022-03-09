@@ -28,6 +28,14 @@ Specificaly, this node will periodically read the selected measurements from the
 This node will also subscribe to /cmd_vel and write commands to the 3 motor controllers.
 """
 
+""" 
+TODO :
+- Read IMU (not supported by PyVesc out of the box). Hints: create a message (examples in getters.py) with "VedderCmd.COMM_GET_IMU_DATA". 
+The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the file "datatypes.h" in vesc_project.
+- Modify zuuu_description to be able to launch the description without Gazebo
+- Connect the rest of the navigation stack
+"""
+
 # Interesting stuff can be found in Modern Robotics' chapters:
 # 13.2 Omnidirectional Wheeled Mobile Robots
 # 13.4 Odometry
