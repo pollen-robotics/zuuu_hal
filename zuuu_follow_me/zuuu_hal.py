@@ -9,12 +9,14 @@ from pyvesc.VESC import MultiVESC
 from example_interfaces.msg import Float32
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
+from sensor_msgs.msg import LaserScan
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 from rclpy.constants import S_TO_NS
 from collections import deque
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 import tf_transformations
+import copy
 # sudo apt install ros-foxy-tf-transformations
 # sudo pip3 install transforms3d
 # q = tf_transformations.quaternion_from_euler(r, p, y)
@@ -41,6 +43,8 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 # 13.4 Odometry
 # /!\ Our robot frame is different. Matching between their names (left) and ours (right): xb=y, yb-x, u1=uB, u2=uL, u3=uR
 
+LASER_UPPER_ANGLE = math.pi*2
+LASER_LOWER_ANGLE = 0
 
 class MobileBase:
     def __init__(
@@ -88,12 +92,23 @@ class ZuuuHAL(Node):
         super().__init__('zuuu_hal')
         self.get_logger().info("Starting zuuu_hal!")
 
-        self.subscription = self.create_subscription(
+        self.cmd_vel_sub = self.create_subscription(
             Twist,
             'cmd_vel',
             self.cmd_vel_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
-        self.subscription  # prevent unused variable warning... JESUS WHAT HAVE WE BECOME
+        self.cmd_vel_sub  # prevent unused variable warning... JESUS WHAT HAVE WE BECOME
+
+        # TODO Temporary fix since https://github.com/ros-perception/laser_filters doesn't work on Foxy aparently
+        self.scan_sub = self.create_subscription(
+            LaserScan,
+            '/scan',
+            self.scan_filter_callback,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
+        self.scan_sub  # prevent unused variable warning... JESUS WHAT HAVE WE BECOME
+        self.scan_pub = self.create_publisher(
+            LaserScan, 'scan_filterd', 10)
+
         self.pub_back_wheel_rpm = self.create_publisher(
             Float32, 'back_wheel_rpm', 2)
         self.pub_left_wheel_rpm = self.create_publisher(
@@ -139,6 +154,30 @@ class ZuuuHAL(Node):
     def cmd_vel_callback(self, msg):
         self.cmd_vel = msg
         self.cmd_vel_t0 = time.time()
+
+    def scan_filter_callback(self, msg) :
+        filtered_scan = LaserScan() 
+        filtered_scan.header = copy.deepcopy(msg.header)
+        filtered_scan.angle_min = msg.angle_min
+        filtered_scan.angle_max = msg.angle_max
+        filtered_scan.angle_increment = msg.angle_increment
+        filtered_scan.time_increment = msg.time_increment
+        filtered_scan.scan_time = msg.scan_time
+        filtered_scan.range_min = msg.range_min
+        filtered_scan.range_max = msg.range_max
+        ranges = []
+        intensities = []
+        for i, r in enumerate(msg.ranges()):
+            angle = msg.angle_min + i*msg.angle_increment
+            if angle > LASER_UPPER_ANGLE or angle < LASER_LOWER_ANGLE :
+                ranges.append(0.0)
+                intensities.append(0.0)
+            else :
+                ranges.append(r)
+                intensities.append(msg.intensities[i])
+        filtered_scan.ranges = ranges
+        filtered_scan.intensities = intensities
+        self.scan_pub.publish(filtered_scan)
 
     def angle_diff(self, a, b):
         # Returns the smallest distance between 2 angles
