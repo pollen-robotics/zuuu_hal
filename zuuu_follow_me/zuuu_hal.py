@@ -75,6 +75,7 @@ class MobileBase:
             [], 10), deque([], 10), deque([], 10)
         # These values might be a tad too safe, however the battery should be almost empty when the cells are on average at 3.3V so there is little
         # to win to go below this. Still tunable if needed.
+        # The current battery has a BMS that shuts down the battery at 20V +-1V. So that would be 2.86V +-0.14V.
         self.battery_cell_warn_voltage = 3.5
         self.battery_cell_min_voltage = 3.3
         self.battery_nb_cells = 7
@@ -140,10 +141,15 @@ class ZuuuHAL(Node):
         self.x_vel = 0.0
         self.y_vel = 0.0
         self.theta_vel = 0.0
+        self.battery_voltage = 25.0
+        self.max_full_com_fails = 100
         self.old_measure_timestamp = self.get_clock().now()
         self.measure_timestamp = self.get_clock().now()
         # *sigh* if needed use: https://github.com/ros2/rclpy/blob/master/rclpy/test/test_time.py
         self.cmd_vel_t0 = time.time()
+        self.get_logger().info(
+            "Reading Zuuu's sensors once...")
+        self.read_measurements()
         self.get_logger().info(
             "zuuu_hal started, you can write to cmd_vel to move the robot")
         self.get_logger().info("List of published topics: TODO")
@@ -152,14 +158,16 @@ class ZuuuHAL(Node):
         self.measurements_t = time.time()
         self.create_timer(self.omnibase.battery_check_period, self.check_battery)
 
-    def check_battery(self) :
+    def check_battery(self, verbose=True) :
         t = time.time()
+        if verbose:
+            self.print_all_measurements()
         if (t - self.measurements_t)> (self.omnibase.battery_check_period+1) :
             self.get_logger().warning("Zuuu's measurements are not made often enough. Reading now.")
             self.read_measurements()
         warn_voltage = self.omnibase.battery_nb_cells*self.omnibase.battery_cell_warn_voltage
         min_voltage = self.omnibase.battery_nb_cells*self.omnibase.battery_cell_min_voltage
-        voltage = self.omnibase.back_wheel_measurements.v_in
+        voltage = self.battery_voltage
         
         if (min_voltage < voltage < warn_voltage) :
             self.get_logger().warning("Battery voltage LOW ({}V). Consider recharging. Warning threshold: {}V, stop threshold: {}V".format(voltage, warn_voltage, min_voltage)) 
@@ -169,6 +177,7 @@ class ZuuuHAL(Node):
         else :
             pass
             self.get_logger().warning("Battery voltage OK ({}V). Warning threshold: {}V, stop threshold: {}V".format(voltage, warn_voltage, min_voltage)) 
+        
             
             
 
@@ -292,7 +301,7 @@ class ZuuuHAL(Node):
         to_print += "\n\n*** right_wheel:\n"
         to_print += self.format_measurements(
             self.omnibase.right_wheel_measurements)
-        to_print += "\n\n Nones left:{}, right:{}, back:{}".format(
+        to_print += "\n\n Fails ('Nones') left:{}, right:{}, back:{}".format(
             self.omnibase.left_wheel_nones, self.omnibase.right_wheel_nones, self.omnibase.back_wheel_nones)
         to_print += "\n\n AVG RPM left:{:.2f}, right:{:.2f}, back:{:.2f}".format(
             self.omnibase.left_wheel_avg_rpm/self.omnibase.half_poles, self.omnibase.right_wheel_avg_rpm/self.omnibase.half_poles, self.omnibase.back_wheel_avg_rpm/self.omnibase.half_poles)
@@ -399,8 +408,8 @@ class ZuuuHAL(Node):
         # Local speeds in egocentric frame. Care, "rpm" are actually erpm and need to be devided by half the amount of magnetic poles to get the actual rpm.
         self.x_vel, self.y_vel, self.theta_vel = self.dk_vel(self.omnibase.left_wheel_rpm/self.omnibase.half_poles,
                                                              self.omnibase.right_wheel_rpm/self.omnibase.half_poles, self.omnibase.back_wheel_rpm/self.omnibase.half_poles)
-        self.get_logger().info(
-            "IK vel : {:.2f}, {:.2f}, {:.2f}".format(self.x_vel, self.y_vel, self.theta_vel))
+        # self.get_logger().info(
+        #     "IK vel : {:.2f}, {:.2f}, {:.2f}".format(self.x_vel, self.y_vel, self.theta_vel))
         # Applying the small displacement in the world-fixed odom frame (simple 2D rotation)
         dt_duration = (self.measure_timestamp - self.old_measure_timestamp)
         dt_seconds = dt_duration.nanoseconds/S_TO_NS
@@ -430,10 +439,26 @@ class ZuuuHAL(Node):
     
     def read_measurements(self) :
         self.omnibase.read_all_measurements()
+        if self.omnibase.back_wheel_measurements is not None :
+            self.battery_voltage = self.omnibase.back_wheel_measurements.v_in
+        elif self.omnibase.left_wheel_measurements is not None :
+            self.battery_voltage = self.omnibase.left_wheel_measurements.v_in
+        elif self.omnibase.right_wheel_measurements is not None :
+            self.battery_voltage = self.omnibase.right_wheel_measurements.v_in
+        else :
+            # Decidemment ! Keeping last valid measure...
+            self.nb_full_com_fails +=1
+            self.get_logger().warning("Could not read any of the motor drivers. This should not happen often.")
+            if (self.nb_full_com_fails > self.max_full_com_fails ) :
+                self.get_logger().error("Too many communication errors, emergency shutdown")
+                self.emergency_shutdown()
+            return
+        # Read success
+        self.nb_full_com_fails = 0
         self.measurements_t = time.time()
 
 
-    def main_tick(self, verbose=True):
+    def main_tick(self, verbose=False):
         duty_cycles = [0, 0, 0]
         t = time.time()
 
