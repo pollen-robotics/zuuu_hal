@@ -73,6 +73,12 @@ class MobileBase:
         self.left_wheel_avg_rpm, self.right_wheel_avg_rpm, self.back_wheel_avg_rpm = 0, 0, 0
         self.left_wheel_rpm_deque, self.right_wheel_rpm_deque, self.back_wheel_rpm_deque = deque(
             [], 10), deque([], 10), deque([], 10)
+        # These values might be a tad too safe, however the battery should be almost empty when the cells are on average at 3.3V so there is little
+        # to win to go below this. Still tunable if needed.
+        self.battery_cell_warn_voltage = 3.5
+        self.battery_cell_min_voltage = 3.3
+        self.battery_nb_cells = 7
+        self.battery_check_period = 2
 
     def read_all_measurements(self):
         self.left_wheel_measurements = self.left_wheel.get_measurements()
@@ -143,6 +149,28 @@ class ZuuuHAL(Node):
         self.get_logger().info("List of published topics: TODO")
 
         self.create_timer(0.012, self.main_tick)
+        self.measurements_t = time.time()
+        self.create_timer(self.omnibase.battery_check_period, self.check_battery)
+
+    def check_battery(self) :
+        t = time.time()
+        if (t - self.measurements_t)> (self.omnibase.battery_check_period+1) :
+            self.get_logger().warning("Zuuu's measurements are not made often enough. Reading now.")
+            self.read_measurements()
+        warn_voltage = self.omnibase.battery_nb_cells*self.omnibase.battery_cell_warn_voltage
+        min_voltage = self.omnibase.battery_nb_cells*self.omnibase.battery_cell_min_voltage
+        voltage = self.omnibase.back_wheel_measurements.v_in
+        
+        if (min_voltage < voltage < warn_voltage) :
+            self.get_logger().warning("Battery voltage LOW ({}V). Consider recharging. Warning threshold: {}V, stop threshold: {}V".format(voltage, warn_voltage, min_voltage)) 
+        elif (voltage < min_voltage) :
+            self.get_logger().error("Battery voltage critically LOW ({}V). Emergency shutdown! Warning threshold: {}V, stop threshold: {}V".format(voltage, warn_voltage, min_voltage)) 
+            self.emergency_shutdown()
+        else :
+            pass
+            self.get_logger().warning("Battery voltage OK ({}V). Warning threshold: {}V, stop threshold: {}V".format(voltage, warn_voltage, min_voltage)) 
+            
+            
 
     def emergency_shutdown(self):
         self.omnibase.back_wheel.set_duty_cycle(0)
@@ -399,6 +427,11 @@ class ZuuuHAL(Node):
             else:
                 duty_cycles[i] = min(self.max_duty_cyle, duty_cycles[i])
         return duty_cycles
+    
+    def read_measurements(self) :
+        self.omnibase.read_all_measurements()
+        self.measurements_t = time.time()
+
 
     def main_tick(self, verbose=True):
         duty_cycles = [0, 0, 0]
@@ -426,7 +459,7 @@ class ZuuuHAL(Node):
         self.measure_timestamp = self.get_clock().now()
 
         # Reading the measurements (this is what takes most of the time, ~9ms)
-        self.omnibase.read_all_measurements()
+        self.read_measurements()
         self.update_wheel_speeds()
 
         if verbose:
