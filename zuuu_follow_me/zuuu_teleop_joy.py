@@ -26,6 +26,7 @@ R2/R1 : increase/decrease only angular speed by 5% (additive)
 CTRL-C  or press CIRCLE on the controller to quit
 """
 
+# PS4 controller:
 # Button  0 = X
 # Button  1 = O
 # Button  2 = Triangle
@@ -39,6 +40,20 @@ CTRL-C  or press CIRCLE on the controller to quit
 # Button 10 = ps_button
 # Button 11 = joy_left
 # Button 12 = joy_right
+
+# XBOX controller:
+# Button  0 = A
+# Button  1 = B
+# Button  2 = X
+# Button  3 = Y
+# Button  4 = LB
+# Button  5 = RB
+# Button  6 = back
+# Button  7 = start
+# Button  8 = big central button
+# LT and RT are axis (like a joy)
+
+# When using the XBOX controller, most of it is the same, except that you must use Start and Back to increase the max speeds.
 
 
 def sign(x):
@@ -177,6 +192,8 @@ class JoyTeleop(Node):
         self.pub.publish(twist)
         self.get_logger().info("\nx_vel: {:.1f}%, y_vel: {:.1f}%, theta_vel: {:.1f}%.\nMax lin_vel: {:.1f}%, max rot_vel: {:.1f}%".format(
             x*100, y*100, theta*100, self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+        # self.print_controller()
+        # time.sleep(1.0)
 
 
 def main():

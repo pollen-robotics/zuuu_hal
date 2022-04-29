@@ -155,6 +155,7 @@ class ZuuuHAL(Node):
         self.get_logger().info("List of published topics: TODO")
 
         self.create_timer(0.012, self.main_tick)
+        # self.create_timer(0.1, self.main_tick)
         self.measurements_t = time.time()
         self.create_timer(self.omnibase.battery_check_period, self.check_battery)
 
