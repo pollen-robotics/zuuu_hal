@@ -46,6 +46,7 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 LASER_UPPER_ANGLE = math.pi*2
 LASER_LOWER_ANGLE = 0
 
+
 class MobileBase:
     def __init__(
         self,
@@ -129,7 +130,7 @@ class ZuuuHAL(Node):
         self.br = TransformBroadcaster(self)
 
         self.omnibase = MobileBase()
-        self.max_duty_cyle = 0.2  # max is 1
+        self.max_duty_cyle = 0.3  # max is 1
         self.cmd_vel_timeout = 0.2
         self.cmd_vel = None
         self.x_odom = 0.0
@@ -157,30 +158,33 @@ class ZuuuHAL(Node):
         self.create_timer(0.012, self.main_tick)
         # self.create_timer(0.1, self.main_tick)
         self.measurements_t = time.time()
-        self.create_timer(self.omnibase.battery_check_period, self.check_battery)
+        self.create_timer(self.omnibase.battery_check_period,
+                          self.check_battery)
 
-    def check_battery(self, verbose=True) :
+    def check_battery(self, verbose=True):
         t = time.time()
         if verbose:
             self.print_all_measurements()
-        if (t - self.measurements_t)> (self.omnibase.battery_check_period+1) :
+        if (t - self.measurements_t) > (self.omnibase.battery_check_period+1):
             self.get_logger().warning("Zuuu's measurements are not made often enough. Reading now.")
             self.read_measurements()
-        warn_voltage = self.omnibase.battery_nb_cells*self.omnibase.battery_cell_warn_voltage
-        min_voltage = self.omnibase.battery_nb_cells*self.omnibase.battery_cell_min_voltage
+        warn_voltage = self.omnibase.battery_nb_cells * \
+            self.omnibase.battery_cell_warn_voltage
+        min_voltage = self.omnibase.battery_nb_cells * \
+            self.omnibase.battery_cell_min_voltage
         voltage = self.battery_voltage
-        
-        if (min_voltage < voltage < warn_voltage) :
-            self.get_logger().warning("Battery voltage LOW ({}V). Consider recharging. Warning threshold: {}V, stop threshold: {}V".format(voltage, warn_voltage, min_voltage)) 
-        elif (voltage < min_voltage) :
-            self.get_logger().error("Battery voltage critically LOW ({}V). Emergency shutdown! Warning threshold: {}V, stop threshold: {}V".format(voltage, warn_voltage, min_voltage)) 
+
+        if (min_voltage < voltage < warn_voltage):
+            self.get_logger().warning("Battery voltage LOW ({}V). Consider recharging. Warning threshold: {}V, stop threshold: {}V".format(
+                voltage, warn_voltage, min_voltage))
+        elif (voltage < min_voltage):
+            self.get_logger().error("Battery voltage critically LOW ({}V). Emergency shutdown! Warning threshold: {}V, stop threshold: {}V".format(
+                voltage, warn_voltage, min_voltage))
             self.emergency_shutdown()
-        else :
+        else:
             pass
-            self.get_logger().warning("Battery voltage OK ({}V). Warning threshold: {}V, stop threshold: {}V".format(voltage, warn_voltage, min_voltage)) 
-        
-            
-            
+            self.get_logger().warning("Battery voltage OK ({}V). Warning threshold: {}V, stop threshold: {}V".format(
+                voltage, warn_voltage, min_voltage))
 
     def emergency_shutdown(self):
         self.omnibase.back_wheel.set_duty_cycle(0)
@@ -193,8 +197,8 @@ class ZuuuHAL(Node):
         self.cmd_vel = msg
         self.cmd_vel_t0 = time.time()
 
-    def scan_filter_callback(self, msg) :
-        filtered_scan = LaserScan() 
+    def scan_filter_callback(self, msg):
+        filtered_scan = LaserScan()
         filtered_scan.header = copy.deepcopy(msg.header)
         filtered_scan.angle_min = msg.angle_min
         filtered_scan.angle_max = msg.angle_max
@@ -207,10 +211,10 @@ class ZuuuHAL(Node):
         intensities = []
         for i, r in enumerate(msg.ranges()):
             angle = msg.angle_min + i*msg.angle_increment
-            if angle > LASER_UPPER_ANGLE or angle < LASER_LOWER_ANGLE :
+            if angle > LASER_UPPER_ANGLE or angle < LASER_LOWER_ANGLE:
                 ranges.append(0.0)
                 intensities.append(0.0)
-            else :
+            else:
                 ranges.append(r)
                 intensities.append(msg.intensities[i])
         filtered_scan.ranges = ranges
@@ -437,27 +441,27 @@ class ZuuuHAL(Node):
             else:
                 duty_cycles[i] = min(self.max_duty_cyle, duty_cycles[i])
         return duty_cycles
-    
-    def read_measurements(self) :
+
+    def read_measurements(self):
         self.omnibase.read_all_measurements()
-        if self.omnibase.back_wheel_measurements is not None :
+        if self.omnibase.back_wheel_measurements is not None:
             self.battery_voltage = self.omnibase.back_wheel_measurements.v_in
-        elif self.omnibase.left_wheel_measurements is not None :
+        elif self.omnibase.left_wheel_measurements is not None:
             self.battery_voltage = self.omnibase.left_wheel_measurements.v_in
-        elif self.omnibase.right_wheel_measurements is not None :
+        elif self.omnibase.right_wheel_measurements is not None:
             self.battery_voltage = self.omnibase.right_wheel_measurements.v_in
-        else :
+        else:
             # Decidemment ! Keeping last valid measure...
-            self.nb_full_com_fails +=1
-            self.get_logger().warning("Could not read any of the motor drivers. This should not happen often.")
-            if (self.nb_full_com_fails > self.max_full_com_fails ) :
+            self.nb_full_com_fails += 1
+            self.get_logger().warning(
+                "Could not read any of the motor drivers. This should not happen often.")
+            if (self.nb_full_com_fails > self.max_full_com_fails):
                 self.get_logger().error("Too many communication errors, emergency shutdown")
                 self.emergency_shutdown()
             return
         # Read success
         self.nb_full_com_fails = 0
         self.measurements_t = time.time()
-
 
     def main_tick(self, verbose=False):
         duty_cycles = [0, 0, 0]

@@ -134,7 +134,7 @@ def main():
 
     try:
         while True:
-            if (status ==0):
+            if (status == 0):
                 print(msg)
             status = (status + 1) % 15
             key = getKey(settings)
@@ -157,12 +157,13 @@ def main():
             x = x * lin_speed
             y = y * lin_speed
             th = th * rot_speed
-            print("\nx_vel: {:.1f}%, y_vel: {:.1f}%, theta_vel: {:.1f}%.\nMax lin_vel: {:.1f}%, max rot_vel: {:.1f}%".format(x*100, y*100, th*100, lin_speed*100, rot_speed*100))
+            print("\nx_vel: {:.1f}%, y_vel: {:.1f}%, theta_vel: {:.1f}%.\nMax lin_vel: {:.1f}%, max rot_vel: {:.1f}%".format(
+                x*100, y*100, th*100, lin_speed*100, rot_speed*100))
 
             twist = geometry_msgs.msg.Twist()
-            twist.linear.x = x 
-            twist.linear.y = y 
-            twist.linear.z = z 
+            twist.linear.x = x
+            twist.linear.y = y
+            twist.linear.z = z
             twist.angular.x = 0.0
             twist.angular.y = 0.0
             twist.angular.z = th
