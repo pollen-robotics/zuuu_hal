@@ -34,8 +34,16 @@ This node will also subscribe to /cmd_vel and write commands to the 3 motor cont
 TODO :
 - Read IMU (not supported by PyVesc out of the box). Hints: create a message (examples in getters.py) with "VedderCmd.COMM_GET_IMU_DATA". 
 The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the file "datatypes.h" in vesc_project.
-- Modify zuuu_description to be able to launch the description without Gazebo
-- Connect the rest of the navigation stack
+- (DONE) Modify zuuu_description to be able to launch the description without Gazebo
+- (DONE, PENDING TESTS) Connect the rest of the navigation stack
+- Code functions for :
+brake()
+free_wheel()
+set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel=, duration=)
+go_to(x, y, theta)
+reset_odom()
+
+param vs service
 """
 
 # Interesting stuff can be found in Modern Robotics' chapters:
