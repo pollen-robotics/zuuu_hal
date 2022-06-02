@@ -41,6 +41,13 @@ ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: DRIVE}"
 ```
 
 ### Testing the odometry
+Getting the odometry in CLI:
+```
+ros2 service call /GetOdometry zuuu_interfaces/srv/GetOdometry "{}"
+```
+
+
+
 You can run a visual test using RViz (setting a high value to the LIDAR decay time is a visual trick to see the integral of the errors of the odometry):
 ```
 ros2 launch zuuu_description rviz_bringup.launch.py

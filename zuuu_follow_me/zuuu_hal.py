@@ -16,7 +16,7 @@ from rclpy.constants import S_TO_NS
 from collections import deque
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
-from zuuu_interfaces.srv import SetZuuuMode
+from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry
 
 import tf_transformations
 import copy
@@ -40,11 +40,12 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 - (DONE) Modify zuuu_description to be able to launch the description without Gazebo
 - (DONE, PENDING TESTS) Connect the rest of the navigation stack
 - Code functions for :
-brake()
-free_wheel()
+(DONE) brake()
+(DONE) free_wheel()
+reset_odom()
+
 set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel=, duration=)
 go_to(x, y, theta)
-reset_odom()
 
 param vs service
 """
@@ -162,6 +163,12 @@ class ZuuuHAL(Node):
         self.mode_service = self.create_service(
             SetZuuuMode, 'SetZuuuMode', self.handle_zuuu_mode)
 
+        self.reset_odometry_service = self.create_service(
+            ResetOdometry, 'ResetOdometry', self.handle_reset_odomtry)
+
+        self.get_odometry_service = self.create_service(
+            GetOdometry, 'GetOdometry', self.handle_get_odometry)
+
         # Initialize the transform broadcaster
         self.br = TransformBroadcaster(self)
 
@@ -193,6 +200,16 @@ class ZuuuHAL(Node):
             response.success = True
         else:
             response.success = False
+        return response
+
+    def handle_reset_odomtry(self, request, response):
+        self.get_logger().info("TO BE IMPLEMENTED")
+        return response
+
+    def handle_get_odometry(self, request, response):
+        response.x = self.x_odom
+        response.y = self.y_odom
+        response.theta = self.theta_odom
         return response
 
     def check_battery(self, verbose=True):
