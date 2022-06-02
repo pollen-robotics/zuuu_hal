@@ -17,6 +17,8 @@ from collections import deque
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry
+from rclpy.parameter import Parameter
+from rcl_interfaces.msg import SetParametersResult
 
 import tf_transformations
 import copy
@@ -43,8 +45,8 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 (DONE) brake()
 (DONE) free_wheel()
 (DONE) reset_odom()
-
-set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel=, duration=)
+set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel_xy=, max_accel_theta=, duration=)
+-> will do a service with x, y, theta and duration all mandatory. The rest become ROS parameters.
 go_to(x, y, theta)
 
 param vs service
@@ -61,6 +63,12 @@ class ZuuuModes(Enum):
     DRIVE = 1
     BRAKE = 2
     FREE_WHEEL = 3
+
+
+class ZuuuControlModes(Enum):
+    """Zuuu control modes"""
+    OPEN_LOOP = 1
+    PID = 2
 
 
 class MobileBase:
@@ -115,10 +123,53 @@ class ZuuuHAL(Node):
     def __init__(self):
         super().__init__('zuuu_hal')
         self.get_logger().info("Starting zuuu_hal!")
-        self.laser_upper_angle = math.pi*2
-        self.laser_lower_angle = 0
-        self.max_duty_cyle = 0.3  # max is 1
-        self.cmd_vel_timeout = 0.2
+        self.declare_parameters(
+            namespace='',
+            parameters=[
+                ('laser_upper_angle', None),
+                ('laser_lower_angle', None),
+                ('max_duty_cyle', None),
+                ('cmd_vel_timeout', None),
+                ('max_full_com_fails', None),
+                ('main_tick_period', None),
+                ('control_mode', None),
+                ('max_accel_xy', None),
+                ('max_accel_theta', None),
+                ('xy_tol', None),
+                ('theta_tol', None),
+            ])
+        self.add_on_set_parameters_callback(self.parameters_callback)
+
+        # Maing sure we don't run the node if the config file is not shared
+        if self.get_parameter('max_duty_cyle').type_ is Parameter.Type.NOT_SET:
+            self.get_logger().error(
+                f"Parameter 'max_duty_cyle' was not initialized. Check that the param file is given to the node (using the launch file is the way to go). Shutting down")
+            self.destroy_node()
+
+        # Parameters initialisation
+        self.laser_upper_angle = self.get_parameter(
+            'laser_upper_angle').get_parameter_value().double_value  # math.pi
+        self.laser_lower_angle = self.get_parameter(
+            'laser_lower_angle').get_parameter_value().double_value  # -math.pi
+        self.max_duty_cyle = self.get_parameter(
+            'max_duty_cyle').get_parameter_value().double_value  # 0.3  # max is 1
+        self.cmd_vel_timeout = self.get_parameter(
+            'cmd_vel_timeout').get_parameter_value().double_value  # 0.2
+        self.max_full_com_fails = self.get_parameter(
+            'max_full_com_fails').get_parameter_value().integer_value  # 100
+        self.main_tick_period = self.get_parameter(
+            'main_tick_period').get_parameter_value().double_value  # 0.012
+        self.control_mode = self.get_parameter(
+            'control_mode').get_parameter_value().string_value  # "OPEN_LOOP"
+        self.max_accel_xy = self.get_parameter(
+            'max_accel_xy').get_parameter_value().double_value  # 1.0
+        self.max_accel_theta = self.get_parameter(
+            'max_accel_theta').get_parameter_value().double_value  # 1.0
+        self.xy_tol = self.get_parameter(
+            'xy_tol').get_parameter_value().double_value  # 0.2
+        self.theta_tol = self.get_parameter(
+            'theta_tol').get_parameter_value().double_value  # 0.17
+
         self.cmd_vel = None
         self.x_odom = 0.0
         self.y_odom = 0.0
@@ -131,7 +182,6 @@ class ZuuuHAL(Node):
         self.theta_vel = 0.0
         self.reset_odom = False
         self.battery_voltage = 25.0
-        self.max_full_com_fails = 100
         self.mode = ZuuuModes.DRIVE
 
         self.cmd_vel_sub = self.create_subscription(
@@ -186,11 +236,59 @@ class ZuuuHAL(Node):
             "zuuu_hal started, you can write to cmd_vel to move the robot")
         self.get_logger().info("List of published topics: TODO")
 
-        self.create_timer(0.012, self.main_tick)
+        self.create_timer(self.main_tick_period, self.main_tick)
         # self.create_timer(0.1, self.main_tick)
         self.measurements_t = time.time()
         self.create_timer(self.omnibase.battery_check_period,
                           self.check_battery)
+
+    def parameters_callback(self, params):
+        success = False
+        for param in params:
+            if param.type_ in [Parameter.Type.DOUBLE, Parameter.Type.INTEGER]:
+                if param.name == "laser_upper_angle":
+                    self.laser_upper_angle = param.value
+                    success = True
+                elif param.name == "laser_lower_angle":
+                    self.laser_lower_angle = param.value
+                    success = True
+                elif param.name == "max_duty_cyle":
+                    if param.value >= 0.0 and param.value <= 1.0:
+                        self.max_duty_cyle = param.value
+                        success = True
+                elif param.name == "cmd_vel_timeout":
+                    if param.value >= 0.0:
+                        self.cmd_vel_timeout = param.value
+                        success = True
+                elif param.name == "max_full_com_fails":
+                    if param.value >= 0.0:
+                        self.max_full_com_fails = param.value
+                        success = True
+                elif param.name == "main_tick_period":
+                    if param.value >= 0.0:
+                        self.main_tick_period = param.value
+                        success = True
+                elif param.name == "max_accel_xy":
+                    if param.value >= 0.0:
+                        self.max_accel_xy = param.value
+                        success = True
+                elif param.name == "max_accel_theta":
+                    if param.value >= 0.0:
+                        self.max_accel_theta = param.value
+                        success = True
+                elif param.name == "xy_tol":
+                    if param.value >= 0.0:
+                        self.xy_tol = param.value
+                        success = True
+                elif param.name == "theta_tol":
+                    if param.value >= 0.0:
+                        self.theta_tol = param.value
+                        success = True
+            elif param.type_ is Parameter.Type.STRING:
+                if param.name == "control_mode":
+                    if param.value in [m.name for m in ZuuuControlModes]:
+                        self.control_mode = ZuuuControlModes[param.value]
+        return SetParametersResult(successful=success)
 
     def handle_zuuu_mode(self, request, response):
         mode = request.mode
@@ -264,9 +362,9 @@ class ZuuuHAL(Node):
         filtered_scan.range_max = msg.range_max
         ranges = []
         intensities = []
-        for i, r in enumerate(msg.ranges()):
+        for i, r in enumerate(msg.ranges):
             angle = msg.angle_min + i*msg.angle_increment
-            if angle > laser_upper_angle or angle < laser_lower_angle:
+            if angle > self.laser_upper_angle or angle < self.laser_lower_angle:
                 ranges.append(0.0)
                 intensities.append(0.0)
             else:
