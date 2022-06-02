@@ -42,7 +42,7 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 - Code functions for :
 (DONE) brake()
 (DONE) free_wheel()
-reset_odom()
+(DONE) reset_odom()
 
 set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel=, duration=)
 go_to(x, y, theta)
@@ -129,6 +129,7 @@ class ZuuuHAL(Node):
         self.x_vel = 0.0
         self.y_vel = 0.0
         self.theta_vel = 0.0
+        self.reset_odom = False
         self.battery_voltage = 25.0
         self.max_full_com_fails = 100
         self.mode = ZuuuModes.DRIVE
@@ -203,7 +204,10 @@ class ZuuuHAL(Node):
         return response
 
     def handle_reset_odomtry(self, request, response):
-        self.get_logger().info("TO BE IMPLEMENTED")
+        # Resetting asynchronously to prevent race conditions.
+        self.reset_odom = True
+        self.get_logger().info("Requested to reset the odometry frame")
+        response.success = True
         return response
 
     def handle_get_odometry(self, request, response):
@@ -461,7 +465,7 @@ class ZuuuHAL(Node):
         self.br.sendTransform(t)
 
     def tick_odom(self):
-        # Local speeds in egocentric frame. Care, "rpm" are actually erpm and need to be devided by half the amount of magnetic poles to get the actual rpm.
+        # Local speeds in egocentric frame. Care, "rpm" are actually erpm and need to be divided by half the amount of magnetic poles to get the actual rpm.
         self.x_vel, self.y_vel, self.theta_vel = self.dk_vel(self.omnibase.left_wheel_rpm/self.omnibase.half_poles,
                                                              self.omnibase.right_wheel_rpm/self.omnibase.half_poles, self.omnibase.back_wheel_rpm/self.omnibase.half_poles)
         # self.get_logger().info(
@@ -481,6 +485,13 @@ class ZuuuHAL(Node):
         self.vx = dx / dt_seconds
         self.vy = dy / dt_seconds
         self.vtheta = dtheta / dt_seconds
+        if self.reset_odom:
+            # Resetting asynchronously to prevent race conditions.
+            # dx, dy and dteta remain correct even on the reset tick
+            self.reset_odom = False
+            self.x_odom = 0.0
+            self.y_odom = 0.0
+            self.theta_odom = 0.0
 
         self.publish_odometry_and_tf()
 
