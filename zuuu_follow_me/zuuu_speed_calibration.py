@@ -12,17 +12,9 @@ def main():
     node = rclpy.create_node('zuuu_speed_calibration')
     pub = node.create_publisher(geometry_msgs.msg.Twist, 'cmd_vel', 10)
 
-    lin_speed = 0.0
-    rot_speed = 0.0
-    turn = 1.0
-    x = 0.0
-    y = 0.0
-    z = 0.0
-    th = 0.0
-    status = 0
     try:
-        t0 = time.time()
         for i in range(8):
+            t0 = time.time()
             theta = i*0.05
             node.get_logger().info(
                 "setting rot speed to {:.2f}% PWM".format(theta))

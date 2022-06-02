@@ -30,8 +30,8 @@ setup(
             'hal = zuuu_follow_me.zuuu_hal:main',
             'teleop_keyboard = zuuu_follow_me.zuuu_teleop_keyboard:main',
             'teleop_joy = zuuu_follow_me.zuuu_teleop_joy:main',
-            'laser_filter = zuuu_follow_me.laser_filter:main'
-            'speed_calibration = zuuu_follow_me.zuuu_speed_calibration:main'
+            'laser_filter = zuuu_follow_me.laser_filter:main',
+            'speed_calibration = zuuu_follow_me.zuuu_speed_calibration:main',
         ],
     },
 )
