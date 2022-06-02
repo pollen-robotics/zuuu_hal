@@ -19,7 +19,7 @@ from tf2_ros import TransformBroadcaster
 from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import SetParametersResult
-
+from csv import writer
 import tf_transformations
 import copy
 # sudo apt install ros-foxy-tf-transformations
@@ -35,9 +35,9 @@ Specificaly, this node will periodically read the selected measurements from the
 This node will also subscribe to /cmd_vel and write commands to the 3 motor controllers.
 """
 
-""" 
+"""
 TODO :
-- Read IMU (not supported by PyVesc out of the box). Hints: create a message (examples in getters.py) with "VedderCmd.COMM_GET_IMU_DATA". 
+- Read IMU (not supported by PyVesc out of the box). Hints: create a message (examples in getters.py) with "VedderCmd.COMM_GET_IMU_DATA".
 The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the file "datatypes.h" in vesc_project.
 - (DONE) Modify zuuu_description to be able to launch the description without Gazebo
 - (DONE, PENDING TESTS) Connect the rest of the navigation stack
@@ -122,6 +122,10 @@ class MobileBase:
 class ZuuuHAL(Node):
     def __init__(self):
         super().__init__('zuuu_hal')
+        self.csv_file = open('zuuu_data.csv', 'a+')
+        self.csv_writer = writer(self.csv_file)
+        self.csv_writer.writerow(
+            ["Time (s)", "PWM (%)", "Wheel speed (rad/s)", "zuuu rot speed (rad/s)"])
         self.get_logger().info("Starting zuuu_hal!")
         self.declare_parameters(
             namespace='',
@@ -229,6 +233,7 @@ class ZuuuHAL(Node):
         self.measure_timestamp = self.get_clock().now()
         # *sigh* if needed use: https://github.com/ros2/rclpy/blob/master/rclpy/test/test_time.py
         self.cmd_vel_t0 = time.time()
+        self.t0 = time.time()
         self.get_logger().info(
             "Reading Zuuu's sensors once...")
         self.read_measurements()
@@ -343,6 +348,7 @@ class ZuuuHAL(Node):
         self.omnibase.back_wheel.set_duty_cycle(0)
         self.omnibase.left_wheel.set_duty_cycle(0)
         self.omnibase.right_wheel.set_duty_cycle(0)
+        self.csv_file.close()
         self.get_logger().warn("Emergency shutdown!")
         sys.exit(1)
 
@@ -398,7 +404,7 @@ class ZuuuHAL(Node):
         return [cycle_back, cycle_right, cycle_left]
 
     def dk_vel(self, rot_l, rot_r, rot_b):
-        """Takes the 3 rotational speeds (in rpm) of the 3 wheels and outputs the x linear speed, y, linear speed and rotational speed
+        """Takes the 3 rotational speeds (in rpm) of the 3 wheels and outputs the x linear speed (m/s), y linear speed (m/s) and rotational speed (rad/s)
         in the robot egocentric frame
 
         Args:
@@ -672,6 +678,8 @@ class ZuuuHAL(Node):
 
         self.publish_wheel_speeds()
         self.tick_odom()
+        self.csv_writer.writerow(
+            [time.time() - self.t0, duty_cycles[0], (2*math.pi*self.omnibase.back_wheel_rpm/self.omnibase.half_poles)/60, self.vtheta])
 
         if verbose:
             self.get_logger().info("x_odom {}, y_odom {}, theta_odom {}".format(

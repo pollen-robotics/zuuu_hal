@@ -65,7 +65,7 @@ ros2 service call /ResetOdometry zuuu_interfaces/srv/ResetOdometry "{}"
 ### Parameters
 The parameter configuration file is in ```config/params.yaml```. 
 The node should always be run with its parameter file. 
-To avoid dangerous situations with uninitialised parameters, the node will crash if the parameter file is not present at launch time.
+To avoid dangerous situations with uninitialised parameters, the node will crash if the parameter file is not present at launch time (just use the launch file and it will link it)
 
 Usage example to dynamically change the LIDAR angular limits:
 ```
