@@ -1,3 +1,18 @@
+## Installation
+Clone and install our custom version of PyVESC:
+
+https://github.com/pollen-robotics/PyVESC
+
+```
+pip3 install -e PyVESC/
+```
+
+Install:
+```
+sudo apt install ros-foxy-tf-transformations
+pip3 install transforms3d
+```
+
 ## Usage
 ### Running the HAL
 For all ROS based use cases, the zuuu_hal must be started with :
