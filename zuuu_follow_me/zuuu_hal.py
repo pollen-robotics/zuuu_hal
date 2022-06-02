@@ -5,6 +5,7 @@ import math
 import numpy as np
 import traceback
 import sys
+from enum import Enum
 from pyvesc.VESC import MultiVESC
 from example_interfaces.msg import Float32
 from nav_msgs.msg import Odometry
@@ -51,8 +52,12 @@ param vs service
 # 13.4 Odometry
 # /!\ Our robot frame is different. Matching between their names (left) and ours (right): xb=y, yb-x, u1=uB, u2=uL, u3=uR
 
-LASER_UPPER_ANGLE = math.pi*2
-LASER_LOWER_ANGLE = 0
+
+class ZuuuModes(Enum):
+    """Zuuu drive modes"""
+    DRIVE = 1
+    BRAKE = 2
+    FREE_WHEEL = 3
 
 
 class MobileBase:
@@ -107,6 +112,23 @@ class ZuuuHAL(Node):
     def __init__(self):
         super().__init__('zuuu_hal')
         self.get_logger().info("Starting zuuu_hal!")
+        self.laser_upper_angle = math.pi*2
+        self.laser_lower_angle = 0
+        self.max_duty_cyle = 0.3  # max is 1
+        self.cmd_vel_timeout = 0.2
+        self.cmd_vel = None
+        self.x_odom = 0.0
+        self.y_odom = 0.0
+        self.theta_odom = 0.0
+        self.vx = 0.0
+        self.vy = 0.0
+        self.vtheta = 0.0
+        self.x_vel = 0.0
+        self.y_vel = 0.0
+        self.theta_vel = 0.0
+        self.battery_voltage = 25.0
+        self.max_full_com_fails = 100
+        self.mode = ZuuuModes.DRIVE
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -138,20 +160,7 @@ class ZuuuHAL(Node):
         self.br = TransformBroadcaster(self)
 
         self.omnibase = MobileBase()
-        self.max_duty_cyle = 0.3  # max is 1
-        self.cmd_vel_timeout = 0.2
-        self.cmd_vel = None
-        self.x_odom = 0.0
-        self.y_odom = 0.0
-        self.theta_odom = 0.0
-        self.vx = 0.0
-        self.vy = 0.0
-        self.vtheta = 0.0
-        self.x_vel = 0.0
-        self.y_vel = 0.0
-        self.theta_vel = 0.0
-        self.battery_voltage = 25.0
-        self.max_full_com_fails = 100
+
         self.old_measure_timestamp = self.get_clock().now()
         self.measure_timestamp = self.get_clock().now()
         # *sigh* if needed use: https://github.com/ros2/rclpy/blob/master/rclpy/test/test_time.py
@@ -219,7 +228,7 @@ class ZuuuHAL(Node):
         intensities = []
         for i, r in enumerate(msg.ranges()):
             angle = msg.angle_min + i*msg.angle_increment
-            if angle > LASER_UPPER_ANGLE or angle < LASER_LOWER_ANGLE:
+            if angle > laser_upper_angle or angle < laser_lower_angle:
                 ranges.append(0.0)
                 intensities.append(0.0)
             else:
@@ -228,6 +237,15 @@ class ZuuuHAL(Node):
         filtered_scan.ranges = ranges
         filtered_scan.intensities = intensities
         self.scan_pub.publish(filtered_scan)
+
+    def set_brake_mode(self):
+        self.mode = ZuuuModes.BRAKE
+
+    def set_free_wheel_mode(self):
+        self.mode = ZuuuModes.FREE_WHEEL
+
+    def set_drive_mode(self):
+        self.mode = ZuuuModes.DRIVE
 
     def angle_diff(self, a, b):
         # Returns the smallest distance between 2 angles
@@ -486,12 +504,27 @@ class ZuuuHAL(Node):
         # Actually sending the commands
         if verbose:
             self.get_logger().info("cycles : {}".format(duty_cycles))
-        self.omnibase.back_wheel.set_duty_cycle(
-            duty_cycles[0])
-        self.omnibase.left_wheel.set_duty_cycle(
-            duty_cycles[2])
-        self.omnibase.right_wheel.set_duty_cycle(
-            duty_cycles[1])
+        if self.mode is ZuuuModes.DRIVE:
+            self.omnibase.back_wheel.set_duty_cycle(
+                duty_cycles[0])
+            self.omnibase.left_wheel.set_duty_cycle(
+                duty_cycles[2])
+            self.omnibase.right_wheel.set_duty_cycle(
+                duty_cycles[1])
+        elif self.mode is ZuuuModes.BRAKE:
+            self.omnibase.back_wheel.set_duty_cycle(
+                duty_cycles[0])
+            self.omnibase.left_wheel.set_duty_cycle(
+                duty_cycles[2])
+            self.omnibase.right_wheel.set_duty_cycle(
+                duty_cycles[1])
+        elif self.mode is ZuuuModes.FREE_WHEEL:
+            self.omnibase.back_wheel.set_current(0)
+            self.omnibase.left_wheel.set_current(0)
+            self.omnibase.right_wheel.set_current(0)
+        else:
+            self.get_logger().warning("unkown mode '{}', setting it to brake".format(self.mode))
+            self.mode = ZuuuModes.BRAKE
 
         self.old_measure_timestamp = self.measure_timestamp
         self.measure_timestamp = self.get_clock().now()
