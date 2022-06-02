@@ -57,6 +57,8 @@ param vs service
 # 13.4 Odometry
 # /!\ Our robot frame is different. Matching between their names (left) and ours (right): xb=y, yb-x, u1=uB, u2=uL, u3=uR
 
+SAVE_CSV = False
+
 
 class ZuuuModes(Enum):
     """Zuuu drive modes"""
@@ -122,10 +124,11 @@ class MobileBase:
 class ZuuuHAL(Node):
     def __init__(self):
         super().__init__('zuuu_hal')
-        self.csv_file = open('zuuu_data.csv', 'a+')
-        self.csv_writer = writer(self.csv_file)
-        self.csv_writer.writerow(
-            ["Time (s)", "PWM (%)", "Wheel speed (rad/s)", "zuuu rot speed (rad/s)"])
+        if SAVE_CSV:
+            self.csv_file = open('zuuu_data.csv', 'a+')
+            self.csv_writer = writer(self.csv_file)
+            self.csv_writer.writerow(
+                ["Time (s)", "PWM (%)", "Wheel speed (rad/s)", "zuuu rot speed (rad/s)"])
         self.get_logger().info("Starting zuuu_hal!")
         self.declare_parameters(
             namespace='',
@@ -348,7 +351,8 @@ class ZuuuHAL(Node):
         self.omnibase.back_wheel.set_duty_cycle(0)
         self.omnibase.left_wheel.set_duty_cycle(0)
         self.omnibase.right_wheel.set_duty_cycle(0)
-        self.csv_file.close()
+        if SAVE_CSV:
+            self.csv_file.close()
         self.get_logger().warn("Emergency shutdown!")
         sys.exit(1)
 
@@ -678,8 +682,9 @@ class ZuuuHAL(Node):
 
         self.publish_wheel_speeds()
         self.tick_odom()
-        self.csv_writer.writerow(
-            [time.time() - self.t0, duty_cycles[0], (2*math.pi*self.omnibase.back_wheel_rpm/self.omnibase.half_poles)/60, self.vtheta])
+        if SAVE_CSV:
+            self.csv_writer.writerow(
+                [time.time() - self.t0, duty_cycles[0], (2*math.pi*self.omnibase.back_wheel_rpm/self.omnibase.half_poles)/60, self.vtheta])
 
         if verbose:
             self.get_logger().info("x_odom {}, y_odom {}, theta_odom {}".format(
