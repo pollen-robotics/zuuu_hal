@@ -32,6 +32,13 @@ ros2 run zuuu_follow_me teleop_keyboard
 ```
 3) With code, sending speed commands on the 'cmd_vel' topic.
 
+### Setting the drive mode
+Can be tested with CLI:
+```
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: BRAKE}" 
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: FREE_WHEEL}" 
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: DRIVE}" 
+```
 
 ### Testing the odometry
 You can run a visual test using RViz (setting a high value to the LIDAR decay time is a visual trick to see the integral of the errors of the odometry):

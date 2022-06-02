@@ -16,6 +16,8 @@ from rclpy.constants import S_TO_NS
 from collections import deque
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
+from zuuu_interfaces.srv import SetZuuuMode
+
 import tf_transformations
 import copy
 # sudo apt install ros-foxy-tf-transformations
@@ -156,6 +158,10 @@ class ZuuuHAL(Node):
 
         self.pub_odom = self.create_publisher(
             Odometry, 'odom', 2)
+
+        self.mode_service = self.create_service(
+            SetZuuuMode, 'SetZuuuMode', self.handle_zuuu_mode)
+
         # Initialize the transform broadcaster
         self.br = TransformBroadcaster(self)
 
@@ -177,6 +183,17 @@ class ZuuuHAL(Node):
         self.measurements_t = time.time()
         self.create_timer(self.omnibase.battery_check_period,
                           self.check_battery)
+
+    def handle_zuuu_mode(self, request, response):
+        mode = request.mode
+        self.get_logger().info("Requested mode change to :'{}'".format(mode))
+
+        if mode in [m.name for m in ZuuuModes]:
+            self.mode = ZuuuModes[mode]
+            response.success = True
+        else:
+            response.success = False
+        return response
 
     def check_battery(self, verbose=True):
         t = time.time()
@@ -237,15 +254,6 @@ class ZuuuHAL(Node):
         filtered_scan.ranges = ranges
         filtered_scan.intensities = intensities
         self.scan_pub.publish(filtered_scan)
-
-    def set_brake_mode(self):
-        self.mode = ZuuuModes.BRAKE
-
-    def set_free_wheel_mode(self):
-        self.mode = ZuuuModes.FREE_WHEEL
-
-    def set_drive_mode(self):
-        self.mode = ZuuuModes.DRIVE
 
     def angle_diff(self, a, b):
         # Returns the smallest distance between 2 angles
