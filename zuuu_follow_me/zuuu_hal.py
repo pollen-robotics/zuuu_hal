@@ -181,8 +181,16 @@ class ZuuuHAL(Node):
             'max_full_com_fails').get_parameter_value().integer_value  # 100
         self.main_tick_period = self.get_parameter(
             'main_tick_period').get_parameter_value().double_value  # 0.012
-        self.control_mode = self.get_parameter(
-            'control_mode').get_parameter_value().string_value  # "OPEN_LOOP"
+
+        control_mode_param = self.get_parameter('control_mode')
+        if control_mode_param.value in [m.name for m in ZuuuControlModes]:
+            # "OPEN_LOOP"
+            self.control_mode = ZuuuControlModes[control_mode_param.value]
+        else:
+            self.get_logger().error(
+                f"Parameter 'control_mode' has an unknown value: '{control_mode_param.value}'. Shutting down")
+            self.destroy_node()
+
         self.max_accel_xy = self.get_parameter(
             'max_accel_xy').get_parameter_value().double_value  # 1.0
         self.max_accel_theta = self.get_parameter(
@@ -323,6 +331,8 @@ class ZuuuHAL(Node):
                 if param.name == "control_mode":
                     if param.value in [m.name for m in ZuuuControlModes]:
                         self.control_mode = ZuuuControlModes[param.value]
+                        success = True
+
         return SetParametersResult(successful=success)
 
     def handle_zuuu_mode(self, request, response):
@@ -349,7 +359,7 @@ class ZuuuHAL(Node):
         response.theta = self.theta_odom
         return response
 
-    def check_battery(self, verbose=True):
+    def check_battery(self, verbose=False):
         t = time.time()
         if verbose:
             self.print_all_measurements()
@@ -708,13 +718,15 @@ class ZuuuHAL(Node):
             self.omnibase.right_wheel.set_duty_cycle(
                 duty_cycles[1])
         elif self.control_mode is ZuuuControlModes.PID:
-            # rad/s to rpm
+            # rad/s to rpm to erpm
             self.omnibase.back_wheel.set_rpm(
-                wheel_speeds[0]*30/math.pi)
+                int(self.omnibase.half_poles*wheel_speeds[0]*30/math.pi))
             self.omnibase.left_wheel.set_rpm(
-                wheel_speeds[2]*30/math.pi)
+                int(self.omnibase.half_poles*wheel_speeds[2]*30/math.pi))
             self.omnibase.right_wheel.set_rpm(
-                wheel_speeds[1]*30/math.pi)
+                int(self.omnibase.half_poles*wheel_speeds[1]*30/math.pi))
+        else:
+            self.get_logger().warning("unknown control mode '{}'".format(self.control_mode))
 
     def main_tick(self, verbose=False):
         duty_cycles = [0, 0, 0]
@@ -740,8 +752,6 @@ class ZuuuHAL(Node):
             self.omnibase.left_wheel.set_current(0)
             self.omnibase.right_wheel.set_current(0)
         elif self.mode is ZuuuModes.SPEED:
-            self.get_logger().info("Speed mode!!")
-
             # If too much time without an order, the speeds are smoothed back to 0 for safety.
             if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
                 self.x_vel_goal = self.cmd_vel.linear.x

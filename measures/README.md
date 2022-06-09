@@ -5,3 +5,8 @@ The most basic linear model between PWM (between 0 and 1) and wheel rotation spe
 ![](2022-06-02-23-34-47.png)
 
 ![](2022-06-08-23-18-58.png)
+
+
+Some quick measures :
+10 full rotations measured in 31.3 sec, asking for a rotational speed of 2 rad/s PID mode. Good result (31.3 * 2 / (2*pi)) = 9.96.
+10 full rotations measured in 31.41 sec, asking for a rotational speed of 2 rad/s OPEN_LOOP mode. Good result (31.3 * 2 / (2*pi)) = 10.00
