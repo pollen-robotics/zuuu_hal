@@ -38,6 +38,7 @@ Can be tested with CLI:
 ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: BRAKE}" 
 ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: FREE_WHEEL}" 
 ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: DRIVE}" 
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: EMERGENCY_STOP}" 
 ```
 
 ### Testing the odometry
@@ -72,6 +73,15 @@ Usage example to dynamically change the LIDAR angular limits:
 ros2 param set /zuuu_hal laser_lower_angle -0.1
 ```
 
+### set_speed service
+Sets a constant speed for a given duration. Zuuu should make a full rotation with this call:
+```
+ros2 service call /SetSpeed zuuu_interfaces/srv/SetSpeed "{x_vel: 0.0, y_vel: 0.0, rot_vel: 2.0, duration: 3.1415}"
+```
+This script makes Zuuu draw a 1x1 square (front, right, back, left):
+```
+ros2 run zuuu_follow_me set_speed_service_test
+```
 ### Follow me demo
 Old code that requires a controller to be connected. Allows for controller control or automatic "follow me" behaviour.
 This demo does not require the HAL to be started, just run: 

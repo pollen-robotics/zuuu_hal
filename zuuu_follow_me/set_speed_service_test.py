@@ -10,32 +10,49 @@ import traceback
 class SetSpeedServiceTest(Node):
     def __init__(self):
         super().__init__('set_speed_service_test')
-        self.cli = self.create_client(SetSpeed, 'set_speed')
+        self.cli = self.create_client(SetSpeed, 'SetSpeed')
         while not self.cli.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('service not available, waiting again...')
         self.req = SetSpeed.Request()
         self.t0 = time.time()
         self.create_timer(0.1, self.main_tick)
+        self.state = 0
 
     def main_tick(self):
-        # Drawing a square of 1x1m in 8 seconds
+        self.get_logger().info("Drawing a square of 1x1m in 8 seconds")
         self.req.duration = 2.0
-        if time.time() < (self.t0 + 2.0):
+        if time.time() < (self.t0 + 3.0):
             self.req.x_vel = 0.5
             self.req.y_vel = 0.0
-            self.req.theta_vel = 0.0
-        elif time.time() < (self.t0 + 4.0):
+            self.req.rot_vel = 0.0
+            if self.state == 0:
+                self.get_logger().info(f"{self.state}")
+                self.cli.call_async(self.req)
+                self.state += 1
+        elif time.time() < (self.t0 + 6.0):
             self.req.x_vel = 0.0
             self.req.y_vel = -0.5
-            self.req.theta_vel = 0.0
-        elif time.time() < (self.t0 + 4.0):
+            self.req.rot_vel = 0.0
+            if self.state == 1:
+                self.get_logger().info(f"{self.state}")
+                self.cli.call_async(self.req)
+                self.state += 1
+        elif time.time() < (self.t0 + 9.0):
             self.req.x_vel = -0.5
             self.req.y_vel = 0.0
-            self.req.theta_vel = 0.0
-        elif time.time() < (self.t0 + 4.0):
+            self.req.rot_vel = 0.0
+            if self.state == 2:
+                self.get_logger().info(f"{self.state}")
+                self.cli.call_async(self.req)
+                self.state += 1
+        elif time.time() < (self.t0 + 12.0):
             self.req.x_vel = 0.0
             self.req.y_vel = 0.5
-            self.req.theta_vel = 0.0
+            self.req.rot_vel = 0.0
+            if self.state == 3:
+                self.get_logger().info(f"{self.state}")
+                self.cli.call_async(self.req)
+                self.state += 1
         else:
             self.get_logger().info('Test finished')
             self.destroy_node()

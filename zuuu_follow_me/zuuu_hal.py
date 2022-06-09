@@ -367,7 +367,8 @@ class ZuuuHAL(Node):
     def handle_set_speed(self, request, response):
         # This service automatically changes the zuuu mode
         self.mode = ZuuuModes.SPEED
-        self.get_logger().info(f"Requested set_speed: duration={request.duration} x_vel='{request.x_vel}'m/s, y_vel='{request.y_vel}'m/s, rot_vel='{request.rot_vel}'rad/s".)
+        self.get_logger().info(
+            f"Requested set_speed: duration={request.duration} x_vel='{request.x_vel}'m/s, y_vel='{request.y_vel}'m/s, rot_vel='{request.rot_vel}'rad/s")
         self.x_vel_goal = request.x_vel
         self.y_vel_goal = request.y_vel
         self.theta_vel_goal = request.rot_vel
@@ -785,9 +786,12 @@ class ZuuuHAL(Node):
             wheel_speeds = self.ik_vel(
                 self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
             self.send_wheel_commands(wheel_speeds)
+        elif self.mode is ZuuuModes.EMERGENCY_STOP:
+            self.get_logger().warning("Emergency stop requested")
+            self.emergency_shutdown()
 
         else:
-            self.get_logger().warning("unkown mode '{}', setting it to brake".format(self.mode))
+            self.get_logger().warning("unknown mode '{}', setting it to brake".format(self.mode))
             self.mode = ZuuuModes.BRAKE
 
         self.old_measure_timestamp = self.measure_timestamp
