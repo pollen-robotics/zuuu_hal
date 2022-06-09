@@ -163,6 +163,10 @@ class ZuuuHAL(Node):
             self.get_logger().error(
                 f"Parameter 'max_duty_cyle' was not initialized. Check that the param file is given to the node (using the launch file is the way to go). Shutting down")
             self.destroy_node()
+        if self.get_parameter('smoothing_factor').type_ is Parameter.Type.NOT_SET:
+            self.get_logger().error(
+                f"Parameter 'smoothing_factor' was not initialized. Check that the param file is given to the node (using the launch file is the way to go). Shutting down")
+            self.destroy_node()
 
         # Parameters initialisation
         self.laser_upper_angle = self.get_parameter(
@@ -188,7 +192,7 @@ class ZuuuHAL(Node):
         self.theta_tol = self.get_parameter(
             'theta_tol').get_parameter_value().double_value  # 0.17
         self.smoothing_factor = self.get_parameter(
-            'smoothing_factor').get_parameter_value().double_value  # 100
+            'smoothing_factor').get_parameter_value().double_value  # 100.0
 
         self.cmd_vel = None
         self.x_odom = 0.0
@@ -310,6 +314,10 @@ class ZuuuHAL(Node):
                 elif param.name == "theta_tol":
                     if param.value >= 0.0:
                         self.theta_tol = param.value
+                        success = True
+                elif param.name == "smoothing_factor":
+                    if param.value >= 0.0:
+                        self.smoothing_factor = param.value
                         success = True
             elif param.type_ is Parameter.Type.STRING:
                 if param.name == "control_mode":
@@ -718,6 +726,8 @@ class ZuuuHAL(Node):
             self.omnibase.left_wheel.set_current(0)
             self.omnibase.right_wheel.set_current(0)
         elif self.mode is ZuuuModes.SPEED:
+            self.get_logger().info("Speed mode!!")
+
             # If too much time without an order, the speeds are smoothed back to 0 for safety.
             if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
                 self.x_vel_goal = self.cmd_vel.linear.x

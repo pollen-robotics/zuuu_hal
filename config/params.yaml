@@ -11,4 +11,4 @@ zuuu_hal:
     max_accel_theta: 1.0
     xy_tol: 0.2
     theta_tol: 0.17
-    smoothing_factor: 100.0
+    smoothing_factor: 10.0
