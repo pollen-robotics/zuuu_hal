@@ -16,7 +16,7 @@ from rclpy.constants import S_TO_NS
 from collections import deque
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
-from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry, SetSpeed
+from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry, SetSpeed, GoToXYTheta
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import SetParametersResult
 from csv import writer
@@ -46,7 +46,7 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 (DONE) free_wheel()
 (DONE) reset_odom()
 (DONE) ik_vel is WRONG, give SI version and use the linear model to go from linear speed to PWM. Don't break old code. lin model is 22.7 * PWM = wheel_rot_speed
-- do the usual fake moving average to smooth speed commands and limit the max accel with the parameter. Do this on X, Y and theta vel, not wheel speed. 
+- do the usual fake moving average to smooth speed commands and limit the max accel with the parameter. Do this on X, Y and theta vel, not wheel speed.
 - service for set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel_xy=, max_accel_theta=, duration=)
 -> will do a service with x, y, theta and duration all mandatory. The rest become ROS parameters.
 - go_to(x, y, theta)
@@ -68,13 +68,15 @@ class ZuuuModes(Enum):
     BRAKE =  Sets the PWMs to 0 effectively braking the base
     FREE_WHEEL =  Sets the current contrl to 0, coast mode
     SPEED =  Mode used by the set_speed service to do speed control over arbitrary duration
+    GOTO =  Mode used by the go_to_xytheta service to do position control in odom frame
     EMERGENCY_STOP =  Calls the emergency_shutdown method
     """
     CMD_VEL = 1
     BRAKE = 2
     FREE_WHEEL = 3
     SPEED = 4
-    EMERGENCY_STOP = 5
+    GOTO = 5
+    EMERGENCY_STOP = 6
 
 
 class ZuuuControlModes(Enum):
@@ -218,11 +220,15 @@ class ZuuuHAL(Node):
         self.x_vel_goal_filtered = 0.0
         self.y_vel_goal_filtered = 0.0
         self.theta_vel_goal_filtered = 0.0
+        self.x_goal = 0.0
+        self.y_goal = 0.0
+        self.theta_goal = 0.0
         self.reset_odom = False
         self.battery_voltage = 25.0
         self.mode = ZuuuModes.SPEED
         self.speed_service_deadline = 0
         self.speed_service_on = False
+        self.goto_service_on = False
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -262,6 +268,10 @@ class ZuuuHAL(Node):
 
         self.set_speed_service = self.create_service(
             SetSpeed, 'SetSpeed', self.handle_set_speed)
+
+        # TODO make this an action server instead to give appropriate feedback
+        self.set_speed_service = self.create_service(
+            GoToXYTheta, 'GoToXYTheta', self.handle_go_to)
 
         # Initialize the transform broadcaster
         self.br = TransformBroadcaster(self)
@@ -374,6 +384,18 @@ class ZuuuHAL(Node):
         self.theta_vel_goal = request.rot_vel
         self.speed_service_deadline = time.time() + request.duration
         self.speed_service_on = True
+        response.success = True
+        return response
+
+    def handle_go_to(self, request, response):
+        # This service automatically changes the zuuu mode
+        self.mode = ZuuuModes.GOTO
+        self.get_logger().info(
+            f"Requested go_to: x={request.x_goal}m, y={request.y_goal}m, theta={request.theta_goal}rad")
+        self.x_goal = request.x_goal
+        self.y_goal = request.y_goal
+        self.theta_goal = request.theta_goal
+        self.goto_service_on = True
         response.success = True
         return response
 
@@ -746,6 +768,22 @@ class ZuuuHAL(Node):
         else:
             self.get_logger().warning("unknown control mode '{}'".format(self.control_mode))
 
+    def sign(self, x):
+        if x >= 0:
+            return 1
+        else:
+            return -1
+
+    def position_control(self):
+        dx = self.x_goal - self.x_odom
+        dy = self.y_goal - self.y_odom
+        dtheta = self.angle_diff(self.theta_goal, self.theta_odom)
+
+        vx = min(0.5, abs(dx*1.0))*self.sign(dx)
+        vy = min(0.5, abs(dy*1.0))*self.sign(dy)
+        vtheta = min(2.0, abs(dtheta*1.0))*self.sign(dtheta)
+        return vx, vy, vtheta
+
     def main_tick(self, verbose=False):
         duty_cycles = [0, 0, 0]
         t = time.time()
@@ -786,6 +824,21 @@ class ZuuuHAL(Node):
             wheel_speeds = self.ik_vel(
                 self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
             self.send_wheel_commands(wheel_speeds)
+        elif self.mode is ZuuuModes.GOTO:
+            x_vel, y_vel, theta_vel = 0, 0, 0
+            if self.goto_service_on:
+                distance = math.sqrt(
+                    (self.x_vel_goal - self.x_odom)**2 +
+                    (self.y_vel_goal - self.y_odom)**2
+                )
+                if distance < self.xy_tol:
+                    self.goto_service_on = False
+                else:
+                    x_vel, y_vel, theta_vel = self.position_control()
+                wheel_speeds = self.ik_vel(
+                    x_vel, y_vel, theta_vel)
+                self.send_wheel_commands(wheel_speeds)
+
         elif self.mode is ZuuuModes.EMERGENCY_STOP:
             self.get_logger().warning("Emergency stop requested")
             self.emergency_shutdown()
