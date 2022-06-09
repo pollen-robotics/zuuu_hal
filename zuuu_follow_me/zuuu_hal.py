@@ -688,6 +688,26 @@ class ZuuuHAL(Node):
         self.nb_full_com_fails = 0
         self.measurements_t = time.time()
 
+    def send_wheel_commands(self, wheel_speeds):
+        if self.control_mode is ZuuuControlModes.OPEN_LOOP:
+            duty_cycles = [self.wheel_rot_speed_to_pwm(
+                wheel_speed) for wheel_speed in wheel_speeds]
+            duty_cycles = self.limit_duty_cycles(duty_cycles)
+            self.omnibase.back_wheel.set_duty_cycle(
+                duty_cycles[0])
+            self.omnibase.left_wheel.set_duty_cycle(
+                duty_cycles[2])
+            self.omnibase.right_wheel.set_duty_cycle(
+                duty_cycles[1])
+        elif self.control_mode is ZuuuControlModes.PID:
+            # rad/s to rpm
+            self.omnibase.back_wheel.set_rpm(
+                wheel_speeds[0]*30/math.pi)
+            self.omnibase.left_wheel.set_rpm(
+                wheel_speeds[2]*30/math.pi)
+            self.omnibase.right_wheel.set_rpm(
+                wheel_speeds[1]*30/math.pi)
+
     def main_tick(self, verbose=False):
         duty_cycles = [0, 0, 0]
         t = time.time()
@@ -701,14 +721,8 @@ class ZuuuHAL(Node):
                 x = self.cmd_vel.linear.x
                 y = self.cmd_vel.linear.y
                 theta = self.cmd_vel.angular.z
-                duty_cycles = self.ik_vel_to_pwm(x, y, theta)
-            duty_cycles = self.limit_duty_cycles(duty_cycles)
-            self.omnibase.back_wheel.set_duty_cycle(
-                duty_cycles[0])
-            self.omnibase.left_wheel.set_duty_cycle(
-                duty_cycles[2])
-            self.omnibase.right_wheel.set_duty_cycle(
-                duty_cycles[1])
+                wheel_speeds = self.ik_vel(x, y, theta)
+            self.send_wheel_commands(wheel_speeds)
         elif self.mode is ZuuuModes.BRAKE:
             self.omnibase.back_wheel.set_duty_cycle(0)
             self.omnibase.left_wheel.set_duty_cycle(0)
@@ -728,14 +742,9 @@ class ZuuuHAL(Node):
                 self.y_vel_goal = 0.0
                 self.theta_vel_goal = 0.0
             self.filter_speed_goals()
-            duty_cycles = self.ik_vel_to_pwm(
+            wheel_speeds = self.ik_vel(
                 self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
-            self.omnibase.back_wheel.set_duty_cycle(
-                duty_cycles[0])
-            self.omnibase.left_wheel.set_duty_cycle(
-                duty_cycles[2])
-            self.omnibase.right_wheel.set_duty_cycle(
-                duty_cycles[1])
+            self.send_wheel_commands(wheel_speeds)
         else:
             self.get_logger().warning("unkown mode '{}', setting it to brake".format(self.mode))
             self.mode = ZuuuModes.BRAKE
