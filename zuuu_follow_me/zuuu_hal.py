@@ -45,11 +45,12 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 (DONE) brake()
 (DONE) free_wheel()
 (DONE) reset_odom()
-set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel_xy=, max_accel_theta=, duration=)
+- ik_vel is WRONG, give SI version and use the linear model to go from linear speed to PWM. Don't break old code. lin model is 22.7 * PWM = wheel_rot_speed
+- do the usual fake moving average to smooth speed commands and limite the max accel with the parameter. Do this on X, Y and theta vel, not wheel speed. 
+- service for set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel_xy=, max_accel_theta=, duration=)
 -> will do a service with x, y, theta and duration all mandatory. The rest become ROS parameters.
-go_to(x, y, theta)
+- go_to(x, y, theta)
 
-param vs service
 """
 
 # Interesting stuff can be found in Modern Robotics' chapters:
@@ -61,10 +62,19 @@ SAVE_CSV = False
 
 
 class ZuuuModes(Enum):
-    """Zuuu drive modes"""
-    DRIVE = 1
+    """
+    Zuuu drive modes
+    CMD_VEL = The commands read on the topic /cmd_vel will be applied as is
+    BRAKE =  Sets the PWMs to 0 effectively braking the base
+    FREE_WHEEL =  Sets the current contrl to 0, coast mode
+    SPEED =  Will ignore /cmd_vel commands but will follow set_speed commands while always applying acceleration limitations.
+    EMERGENCY_STOP =  Calls the emergency_shutdown method
+    """
+    CMD_VEL = 1
     BRAKE = 2
     FREE_WHEEL = 3
+    SPEED = 4
+    EMERGENCY_STOP = 5
 
 
 class ZuuuControlModes(Enum):
@@ -189,7 +199,7 @@ class ZuuuHAL(Node):
         self.theta_vel = 0.0
         self.reset_odom = False
         self.battery_voltage = 25.0
-        self.mode = ZuuuModes.DRIVE
+        self.mode = ZuuuModes.CMD_VEL
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -648,7 +658,7 @@ class ZuuuHAL(Node):
         # Actually sending the commands
         if verbose:
             self.get_logger().info("cycles : {}".format(duty_cycles))
-        if self.mode is ZuuuModes.DRIVE:
+        if self.mode is ZuuuModes.CMD_VEL:
             self.omnibase.back_wheel.set_duty_cycle(
                 duty_cycles[0])
             self.omnibase.left_wheel.set_duty_cycle(
