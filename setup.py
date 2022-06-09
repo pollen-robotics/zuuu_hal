@@ -32,6 +32,7 @@ setup(
             'teleop_joy = zuuu_follow_me.zuuu_teleop_joy:main',
             'laser_filter = zuuu_follow_me.laser_filter:main',
             'speed_calibration = zuuu_follow_me.zuuu_speed_calibration:main',
+            'set_speed_service_test = zuuu_follow_me.set_speed_service_test:main',
         ],
     },
 )
