@@ -417,7 +417,7 @@ class ZuuuHAL(Node):
 
     def ik_vel_to_pwm(self, x_vel, y_vel, rot_vel):
         rot_vels = self.ik_vel(x_vel, y_vel, rot_vel)
-        return [self.wheel_rot_speed_to_pwm() for rot_vel in rot_vels]
+        return [self.wheel_rot_speed_to_pwm(rot_vel) for rot_vel in rot_vels]
 
     def ik_vel_old(self, x, y, rot):
         """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame) and outputs the PWM to apply to each of the 3 motors in an omni setup
@@ -448,9 +448,9 @@ class ZuuuHAL(Node):
         wheel_rot_speed_back = (1/self.omnibase.wheel_radius) * \
             (self.omnibase.wheel_to_center*rot_vel - y_vel)
         wheel_rot_speed_right = (1/self.omnibase.wheel_radius) * (
-            self.omnibase.wheel_to_center*rot_vel + y_vel/2.0 - math.sin(math.pi/3)*x_vel)
+            self.omnibase.wheel_to_center*rot_vel + y_vel/2.0 + math.sin(math.pi/3)*x_vel)
         wheel_rot_speed_left = (1/self.omnibase.wheel_radius) * (self.omnibase.wheel_to_center *
-                                                                 rot_vel + math.sin(math.pi/3)*y_vel/2 + math.sin(math.pi/3)*x_vel)
+                                                                 rot_vel + math.sin(math.pi/3)*y_vel/2 - math.sin(math.pi/3)*x_vel)
 
         return [wheel_rot_speed_back, wheel_rot_speed_right, wheel_rot_speed_left]
 

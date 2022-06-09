@@ -12,6 +12,11 @@ import traceback
 import sys
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 
+import os
+
+# To be able to use pygame in "headless" mode
+# set SDL to use the dummy NULL video driver, so it doesn't need a windowing system.
+os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 msg = """
 This node takes inputs from a controller and publishes them
@@ -69,6 +74,7 @@ class JoyTeleop(Node):
         self.get_logger().info("Starting zuuu_teleop_joy!")
 
         pygame.init()
+        pygame.display.init()
         pygame.joystick.init()
 
         self.nb_joy = pygame.joystick.get_count()
@@ -180,6 +186,7 @@ class JoyTeleop(Node):
         return x, y, rot
 
     def main_tick(self):
+        self.get_logger().info("Tick!!")
         self.tick_controller()
         x, y, theta = self.speeds_from_joystick()
         twist = geometry_msgs.msg.Twist()
