@@ -56,7 +56,7 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 # Interesting stuff can be found in Modern Robotics' chapters:
 # 13.2 Omnidirectional Wheeled Mobile Robots
 # 13.4 Odometry
-# /!\ Our robot frame is different. Matching between their names (left) and ours (right): xb=y, yb-x, u1=uB, u2=uL, u3=uR
+# /!\ Our robot frame is different. Matching between their names (left) and ours (right): xb=y, yb=-x, theta=-theta, u1=uB, u2=uL, u3=uR
 
 SAVE_CSV = False
 
@@ -395,12 +395,22 @@ class ZuuuHAL(Node):
         self.scan_pub.publish(filtered_scan)
 
     def angle_diff(self, a, b):
-        # Returns the smallest distance between 2 angles
+        """Returns the smallest distance between 2 angles
+        """
         d = a - b
         d = ((d + math.pi) % (2 * math.pi)) - math.pi
         return d
 
-    def ik_vel(self, x, y, rot):
+    def wheel_rot_speed_to_pwm(self, rot):
+        """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
+        """
+        return rot/22.7
+
+    def ik_vel_to_pwm(self, x_vel, y_vel, rot_vel):
+        rot_vels = self.ik_vel(x_vel, y_vel, rot_vel)
+        return [self.wheel_rot_speed_to_pwm() for rot_vel in rot_vels]
+
+    def ik_vel_old(self, x, y, rot):
         """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame) and outputs the PWM to apply to each of the 3 motors in an omni setup
 
         Args:
@@ -416,6 +426,24 @@ class ZuuuHAL(Node):
             (x*np.sin(240*np.pi/180)) + rot
 
         return [cycle_back, cycle_right, cycle_left]
+
+    def ik_vel(self, x_vel, y_vel, rot_vel):
+        """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame) and outputs the rotational speed (rad/s) of each of the 3 motors in an omni setup
+
+        Args:
+            x (float): x speed (m/s). Positive "in front" of the robot.
+            y (float): y speed (m/s). Positive "to the left" of the robot.
+            rot (float): rotational speed (rad/s). Positive counter-clock wise.
+        """
+
+        wheel_rot_speed_back = (1/self.omnibase.wheel_radius) * \
+            (self.omnibase.wheel_to_center*rot_vel - y_vel)
+        wheel_rot_speed_right = (1/self.omnibase.wheel_radius) * (
+            self.omnibase.wheel_to_center*rot_vel + y_vel/2.0 - math.sin(math.pi/3)*x_vel)
+        wheel_rot_speed_left = (1/self.omnibase.wheel_radius) * (self.omnibase.wheel_to_center *
+                                                                 rot_vel + math.sin(math.pi/3)*y_vel/2 + math.sin(math.pi/3)*x_vel)
+
+        return [wheel_rot_speed_back, wheel_rot_speed_right, wheel_rot_speed_left]
 
     def dk_vel(self, rot_l, rot_r, rot_b):
         """Takes the 3 rotational speeds (in rpm) of the 3 wheels and outputs the x linear speed (m/s), y linear speed (m/s) and rotational speed (rad/s)
@@ -652,7 +680,7 @@ class ZuuuHAL(Node):
             x = self.cmd_vel.linear.x
             y = self.cmd_vel.linear.y
             theta = self.cmd_vel.angular.z
-            duty_cycles = self.ik_vel(x, y, theta)
+            duty_cycles = self.ik_vel_to_pwm(x, y, theta)
         duty_cycles = self.limit_duty_cycles(duty_cycles)
 
         # Actually sending the commands
