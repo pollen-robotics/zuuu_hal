@@ -45,8 +45,8 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 (DONE) brake()
 (DONE) free_wheel()
 (DONE) reset_odom()
-- ik_vel is WRONG, give SI version and use the linear model to go from linear speed to PWM. Don't break old code. lin model is 22.7 * PWM = wheel_rot_speed
-- do the usual fake moving average to smooth speed commands and limite the max accel with the parameter. Do this on X, Y and theta vel, not wheel speed. 
+(DONE) ik_vel is WRONG, give SI version and use the linear model to go from linear speed to PWM. Don't break old code. lin model is 22.7 * PWM = wheel_rot_speed
+- do the usual fake moving average to smooth speed commands and limit the max accel with the parameter. Do this on X, Y and theta vel, not wheel speed. 
 - service for set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel_xy=, max_accel_theta=, duration=)
 -> will do a service with x, y, theta and duration all mandatory. The rest become ROS parameters.
 - go_to(x, y, theta)
@@ -64,10 +64,10 @@ SAVE_CSV = False
 class ZuuuModes(Enum):
     """
     Zuuu drive modes
-    CMD_VEL = The commands read on the topic /cmd_vel will be applied as is
+    CMD_VEL = The commands read on the topic /cmd_vel will be applied as is with no filters
     BRAKE =  Sets the PWMs to 0 effectively braking the base
     FREE_WHEEL =  Sets the current contrl to 0, coast mode
-    SPEED =  Will ignore /cmd_vel commands but will follow set_speed commands while always applying acceleration limitations.
+    SPEED =  Will follow /cmd_vel commands and set_speed's service commands while always applying acceleration limitations and smoothing
     EMERGENCY_STOP =  Calls the emergency_shutdown method
     """
     CMD_VEL = 1
@@ -154,6 +154,7 @@ class ZuuuHAL(Node):
                 ('max_accel_theta', None),
                 ('xy_tol', None),
                 ('theta_tol', None),
+                ('smoothing_factor', None),
             ])
         self.add_on_set_parameters_callback(self.parameters_callback)
 
@@ -186,6 +187,8 @@ class ZuuuHAL(Node):
             'xy_tol').get_parameter_value().double_value  # 0.2
         self.theta_tol = self.get_parameter(
             'theta_tol').get_parameter_value().double_value  # 0.17
+        self.smoothing_factor = self.get_parameter(
+            'smoothing_factor').get_parameter_value().double_value  # 100
 
         self.cmd_vel = None
         self.x_odom = 0.0
@@ -197,9 +200,15 @@ class ZuuuHAL(Node):
         self.x_vel = 0.0
         self.y_vel = 0.0
         self.theta_vel = 0.0
+        self.x_vel_goal = 0.0
+        self.y_vel_goal = 0.0
+        self.theta_vel_goal = 0.0
+        self.x_vel_goal_filtered = 0.0
+        self.y_vel_goal_filtered = 0.0
+        self.theta_vel_goal_filtered = 0.0
         self.reset_odom = False
         self.battery_voltage = 25.0
-        self.mode = ZuuuModes.CMD_VEL
+        self.mode = ZuuuModes.SPEED
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -467,6 +476,14 @@ class ZuuuHAL(Node):
 
         return [x_vel, y_vel, theta_vel]
 
+    def filter_speed_goals(self):
+        self.x_vel_goal_filtered = (self.x_vel_goal +
+                                    self.smoothing_factor*self.x_vel_goal_filtered)/(1+self.smoothing_factor)
+        self.y_vel_goal_filtered = (self.y_vel_goal +
+                                    self.smoothing_factor*self.y_vel_goal_filtered)/(1+self.smoothing_factor)
+        self.theta_vel_goal_filtered = (self.theta_vel_goal +
+                                        self.smoothing_factor*self.theta_vel_goal_filtered)/(1+self.smoothing_factor)
+
     def format_measurements(self, measurements):
         if measurements is None:
             return "None"
@@ -675,18 +692,17 @@ class ZuuuHAL(Node):
         duty_cycles = [0, 0, 0]
         t = time.time()
 
-        # If too much time without an order, the speeds of he wheels are set to 0 for safety.
-        if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
-            x = self.cmd_vel.linear.x
-            y = self.cmd_vel.linear.y
-            theta = self.cmd_vel.angular.z
-            duty_cycles = self.ik_vel_to_pwm(x, y, theta)
-        duty_cycles = self.limit_duty_cycles(duty_cycles)
-
         # Actually sending the commands
         if verbose:
             self.get_logger().info("cycles : {}".format(duty_cycles))
         if self.mode is ZuuuModes.CMD_VEL:
+            # If too much time without an order, the speeds of the wheels are set to 0 for safety.
+            if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
+                x = self.cmd_vel.linear.x
+                y = self.cmd_vel.linear.y
+                theta = self.cmd_vel.angular.z
+                duty_cycles = self.ik_vel_to_pwm(x, y, theta)
+            duty_cycles = self.limit_duty_cycles(duty_cycles)
             self.omnibase.back_wheel.set_duty_cycle(
                 duty_cycles[0])
             self.omnibase.left_wheel.set_duty_cycle(
@@ -694,16 +710,32 @@ class ZuuuHAL(Node):
             self.omnibase.right_wheel.set_duty_cycle(
                 duty_cycles[1])
         elif self.mode is ZuuuModes.BRAKE:
+            self.omnibase.back_wheel.set_duty_cycle(0)
+            self.omnibase.left_wheel.set_duty_cycle(0)
+            self.omnibase.right_wheel.set_duty_cycle(0)
+        elif self.mode is ZuuuModes.FREE_WHEEL:
+            self.omnibase.back_wheel.set_current(0)
+            self.omnibase.left_wheel.set_current(0)
+            self.omnibase.right_wheel.set_current(0)
+        elif self.mode is ZuuuModes.SPEED:
+            # If too much time without an order, the speeds are smoothed back to 0 for safety.
+            if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
+                self.x_vel_goal = self.cmd_vel.linear.x
+                self.y_vel_goal = self.cmd_vel.linear.y
+                self.theta_vel_goal = self.cmd_vel.angular.z
+            else:
+                self.x_vel_goal = 0.0
+                self.y_vel_goal = 0.0
+                self.theta_vel_goal = 0.0
+            self.filter_speed_goals()
+            duty_cycles = self.ik_vel_to_pwm(
+                self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
             self.omnibase.back_wheel.set_duty_cycle(
                 duty_cycles[0])
             self.omnibase.left_wheel.set_duty_cycle(
                 duty_cycles[2])
             self.omnibase.right_wheel.set_duty_cycle(
                 duty_cycles[1])
-        elif self.mode is ZuuuModes.FREE_WHEEL:
-            self.omnibase.back_wheel.set_current(0)
-            self.omnibase.left_wheel.set_current(0)
-            self.omnibase.right_wheel.set_current(0)
         else:
             self.get_logger().warning("unkown mode '{}', setting it to brake".format(self.mode))
             self.mode = ZuuuModes.BRAKE
