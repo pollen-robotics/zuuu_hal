@@ -16,7 +16,7 @@ from rclpy.constants import S_TO_NS
 from collections import deque
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
-from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry
+from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry, SetSpeed
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import SetParametersResult
 from csv import writer
@@ -64,10 +64,10 @@ SAVE_CSV = False
 class ZuuuModes(Enum):
     """
     Zuuu drive modes
-    CMD_VEL = The commands read on the topic /cmd_vel will be applied as is with no filters
+    CMD_VEL = The commands read on the topic /cmd_vel are applied after smoothing
     BRAKE =  Sets the PWMs to 0 effectively braking the base
     FREE_WHEEL =  Sets the current contrl to 0, coast mode
-    SPEED =  Will follow /cmd_vel commands and set_speed's service commands while always applying acceleration limitations and smoothing
+    SPEED =  Mode used by the set_speed service to do speed control over arbitrary duration
     EMERGENCY_STOP =  Calls the emergency_shutdown method
     """
     CMD_VEL = 1
@@ -221,6 +221,8 @@ class ZuuuHAL(Node):
         self.reset_odom = False
         self.battery_voltage = 25.0
         self.mode = ZuuuModes.SPEED
+        self.speed_service_deadline = 0
+        self.speed_service_on = False
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -253,10 +255,13 @@ class ZuuuHAL(Node):
             SetZuuuMode, 'SetZuuuMode', self.handle_zuuu_mode)
 
         self.reset_odometry_service = self.create_service(
-            ResetOdometry, 'ResetOdometry', self.handle_reset_odomtry)
+            ResetOdometry, 'ResetOdometry', self.handle_reset_odometry)
 
         self.get_odometry_service = self.create_service(
             GetOdometry, 'GetOdometry', self.handle_get_odometry)
+
+        self.set_speed_service = self.create_service(
+            SetSpeed, 'SetSpeed', self.handle_set_speed)
 
         # Initialize the transform broadcaster
         self.br = TransformBroadcaster(self)
@@ -346,7 +351,7 @@ class ZuuuHAL(Node):
             response.success = False
         return response
 
-    def handle_reset_odomtry(self, request, response):
+    def handle_reset_odometry(self, request, response):
         # Resetting asynchronously to prevent race conditions.
         self.reset_odom = True
         self.get_logger().info("Requested to reset the odometry frame")
@@ -357,6 +362,18 @@ class ZuuuHAL(Node):
         response.x = self.x_odom
         response.y = self.y_odom
         response.theta = self.theta_odom
+        return response
+
+    def handle_set_speed(self, request, response):
+        # This service automatically changes the zuuu mode
+        self.mode = ZuuuModes.SPEED
+        self.get_logger().info(f"Requested set_speed: duration={request.duration} x_vel='{request.x_vel}'m/s, y_vel='{request.y_vel}'m/s, rot_vel='{request.rot_vel}'rad/s".)
+        self.x_vel_goal = request.x_vel
+        self.y_vel_goal = request.y_vel
+        self.theta_vel_goal = request.rot_vel
+        self.speed_service_deadline = time.time() + request.duration
+        self.speed_service_on = True
+        response.success = True
         return response
 
     def check_battery(self, verbose=False):
@@ -731,27 +748,10 @@ class ZuuuHAL(Node):
     def main_tick(self, verbose=False):
         duty_cycles = [0, 0, 0]
         t = time.time()
-
         # Actually sending the commands
         if verbose:
             self.get_logger().info("cycles : {}".format(duty_cycles))
         if self.mode is ZuuuModes.CMD_VEL:
-            # If too much time without an order, the speeds of the wheels are set to 0 for safety.
-            if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
-                x = self.cmd_vel.linear.x
-                y = self.cmd_vel.linear.y
-                theta = self.cmd_vel.angular.z
-                wheel_speeds = self.ik_vel(x, y, theta)
-            self.send_wheel_commands(wheel_speeds)
-        elif self.mode is ZuuuModes.BRAKE:
-            self.omnibase.back_wheel.set_duty_cycle(0)
-            self.omnibase.left_wheel.set_duty_cycle(0)
-            self.omnibase.right_wheel.set_duty_cycle(0)
-        elif self.mode is ZuuuModes.FREE_WHEEL:
-            self.omnibase.back_wheel.set_current(0)
-            self.omnibase.left_wheel.set_current(0)
-            self.omnibase.right_wheel.set_current(0)
-        elif self.mode is ZuuuModes.SPEED:
             # If too much time without an order, the speeds are smoothed back to 0 for safety.
             if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
                 self.x_vel_goal = self.cmd_vel.linear.x
@@ -765,6 +765,27 @@ class ZuuuHAL(Node):
             wheel_speeds = self.ik_vel(
                 self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
             self.send_wheel_commands(wheel_speeds)
+        elif self.mode is ZuuuModes.BRAKE:
+            self.omnibase.back_wheel.set_duty_cycle(0)
+            self.omnibase.left_wheel.set_duty_cycle(0)
+            self.omnibase.right_wheel.set_duty_cycle(0)
+        elif self.mode is ZuuuModes.FREE_WHEEL:
+            self.omnibase.back_wheel.set_current(0)
+            self.omnibase.left_wheel.set_current(0)
+            self.omnibase.right_wheel.set_current(0)
+        elif self.mode is ZuuuModes.SPEED:
+            if self.speed_service_deadline < time.time():
+                if self.speed_service_on:
+                    self.get_logger().info("End of set speed duration, setting speeds to 0")
+                self.speed_service_on = False
+                self.x_vel_goal = 0
+                self.y_vel_goal = 0
+                self.theta_vel_goal = 0
+            self.filter_speed_goals()
+            wheel_speeds = self.ik_vel(
+                self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
+            self.send_wheel_commands(wheel_speeds)
+
         else:
             self.get_logger().warning("unkown mode '{}', setting it to brake".format(self.mode))
             self.mode = ZuuuModes.BRAKE
