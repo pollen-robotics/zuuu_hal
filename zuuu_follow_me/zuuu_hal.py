@@ -49,7 +49,8 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 (DONE) do the usual fake moving average to smooth speed commands and limit the max accel with the parameter. Do this on X, Y and theta vel, not wheel speed.
 (DONE)service for set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel_xy=, max_accel_theta=, duration=)
       -> will do a service with x, y, theta and duration all mandatory. The rest become ROS parameters.
-- go_to(x, y, theta)
+(DONE) go_to(x, y, theta)
+- PID as parameters
 
 """
 
@@ -322,9 +323,9 @@ class ZuuuHAL(Node):
         self.speed_service_deadline = 0
         self.speed_service_on = False
         self.goto_service_on = False
-        self.x_pid = PID(0.5, 0.05, 0.0, 0.5, 0.25)
-        self.y_pid = PID(0.5, 0.05, 0.0, 0.5, 0.25)
-        self.theta_pid = PID(2.0, 0.2, 0.0, 2, 1.0)
+        self.x_pid = PID(1.0, 0.02, 0.0, 0.3, 0.05)
+        self.y_pid = PID(1.0, 0.02, 0.0, 0.3, 0.05)
+        self.theta_pid = PID(2.0, 0.005, 0.0, 0.7, 0.1)
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,

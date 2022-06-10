@@ -73,7 +73,7 @@ Usage example to dynamically change the LIDAR angular limits:
 ros2 param set /zuuu_hal laser_lower_angle -0.1
 ```
 
-### set_speed service
+### SetSpeed service
 Sets a constant speed for a given duration. Zuuu should make a full rotation with this call:
 ```
 ros2 service call /SetSpeed zuuu_interfaces/srv/SetSpeed "{x_vel: 0.0, y_vel: 0.0, rot_vel: 2.0, duration: 3.1415}"
@@ -82,6 +82,20 @@ This script makes Zuuu draw a 1x1 square (front, right, back, left):
 ```
 ros2 run zuuu_follow_me set_speed_service_test
 ```
+
+### GoToXYTheta service
+Sets a goal position in the odom frame. Zuuu will try to reach that position using 3 separate PIDs (one for x, one for y and one for theta).
+Zuuu should go to position X=0.5, y=0.0, theta=0.0. If you reset the odom frame, this should be equivalent to moving forward 0.5m.
+```
+ros2 service call /ResetOdometry zuuu_interfaces/srv/ResetOdometry "{}"
+ros2 service call /GoToXYTheta zuuu_interfaces/srv/GoToXYTheta "{x_goal: 0.5, y_goal: 0.0, theta_goal: 0.0}"
+```
+
+TODO add tol discussion, and get finished state service and PID parameters.
+ros2 param set /zuuu_hal xy_tol 0.001
+ros2 param set /zuuu_hal theta_tol 0.001
+
+
 ### Follow me demo
 Old code that requires a controller to be connected. Allows for controller control or automatic "follow me" behaviour.
 This demo does not require the HAL to be started, just run: 
