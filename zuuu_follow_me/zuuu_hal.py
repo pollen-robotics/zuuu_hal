@@ -61,6 +61,25 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 SAVE_CSV = False
 
 
+# utility functions
+
+def angle_diff(a, b):
+    """Returns the smallest distance between 2 angles
+    """
+    d = a - b
+    d = ((d + math.pi) % (2 * math.pi)) - math.pi
+    return d
+
+
+def sign(x):
+    """Returns 1 if x >= 0, -1 otherwise
+    """
+    if x >= 0:
+        return 1
+    else:
+        return -1
+
+
 class ZuuuModes(Enum):
     """
     Zuuu drive modes
@@ -83,6 +102,80 @@ class ZuuuControlModes(Enum):
     """Zuuu control modes"""
     OPEN_LOOP = 1
     PID = 2
+
+
+class PID:
+    def __init__(self, P=1.0, I=0.0, D=0.0, max_command=10, max_i_contribution=5):
+        """PID implementation with anti windup.
+        Keyword Arguments:
+            P {float} -- Proportional gain (default: {1.0})
+            I {float} -- Integral gain (default: {0.0})
+            D {float} -- Differential gain (default: {0.0})
+            max_command {float} -- The output command will be trimmed to +- max_command (default: {10})
+            max_i_contribution {float} -- The integral contribution will be trimmed to +- max_i_contribution (default: {5})
+        """
+        self.p = P
+        self.i = I
+        self.d = D
+        self.max_command = max_command
+        self.max_i_contribution = max_i_contribution
+        self.goal_value = 0
+        self.current_value = 0
+
+        self.prev_error = 0
+        self.i_contribution = 0
+        self.prev_t = time.time()
+
+    def set_goal(self, goal_value):
+        """Sets the goal state
+        """
+        self.goal_value = goal_value
+        # Reseting the persistent data because the goal state changed
+        self.reset()
+
+    def reset(self):
+        """Resets the integral portion, dt and the differential contribution
+        """
+        self.i_contribution = 0
+        self.prev_t = time.time()
+        self.prev_error = self.goal_value - self.current_value
+
+    def limit(self, x, limit):
+        if x > abs(limit):
+            return abs(limit)
+        elif x < -abs(limit):
+            return -abs(limit)
+
+    def tick(self, current_value, is_angle=False):
+        """PID calculations. If is_angle is True, then the error will be calculated as the smallest angle between the goal and the current_value
+        Arguments:
+            current_value {float} -- Current state, usually the feedback value
+
+        Returns:
+            float -- The output command
+        """
+        self.current_value = current_value
+        if is_angle:
+            error = angle_diff(self.goal_value, self.current_value)
+        else:
+            error = self.goal_value - self.current_value
+        t = time.time()
+        dt = t - self.prev_t
+        self.prev_t = t
+        delta_error = error - self.prev_error
+        self.prev_error = error
+
+        p_contribution = self.p * error
+        if dt != 0:
+            d_contribution = self.d * delta_error / dt
+
+        self.i_contribution = self.i_contribution + self.i * error
+        self.limit(self.i_contribution, self.max_i_contribution)
+
+        self.command = p_contribution + self.i_contribution + d_contribution
+        self.limit(self.command, self.max_command)
+
+        return self.command
 
 
 class MobileBase:
@@ -229,6 +322,9 @@ class ZuuuHAL(Node):
         self.speed_service_deadline = 0
         self.speed_service_on = False
         self.goto_service_on = False
+        self.x_pid = PID(0.5, 0.05, 0.0, 0.5, 0.25)
+        self.y_pid = PID(0.5, 0.05, 0.0, 0.5, 0.25)
+        self.theta_pid = PID(2.0, 0.2, 0.0, 2, 1.0)
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -357,6 +453,9 @@ class ZuuuHAL(Node):
         if mode in [m.name for m in ZuuuModes]:
             self.mode = ZuuuModes[mode]
             response.success = True
+            if self.mode is not ZuuuModes.SPEED and self.mode is not ZuuuModes.GOTO:
+                # Changing the mode is a way to prematurely end an on going task requested through a service
+                self.stop_ongoing_services()
         else:
             response.success = False
         return response
@@ -396,6 +495,9 @@ class ZuuuHAL(Node):
         self.y_goal = request.y_goal
         self.theta_goal = request.theta_goal
         self.goto_service_on = True
+        self.x_pid.set_goal(self.x_goal)
+        self.y_pid.set_goal(self.y_goal)
+        self.theta_pid.set_goal(self.theta_goal)
         response.success = True
         return response
 
@@ -460,13 +562,6 @@ class ZuuuHAL(Node):
         filtered_scan.ranges = ranges
         filtered_scan.intensities = intensities
         self.scan_pub.publish(filtered_scan)
-
-    def angle_diff(self, a, b):
-        """Returns the smallest distance between 2 angles
-        """
-        d = a - b
-        d = ((d + math.pi) % (2 * math.pi)) - math.pi
-        return d
 
     def wheel_rot_speed_to_pwm(self, rot):
         """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
@@ -768,21 +863,12 @@ class ZuuuHAL(Node):
         else:
             self.get_logger().warning("unknown control mode '{}'".format(self.control_mode))
 
-    def sign(self, x):
-        if x >= 0:
-            return 1
-        else:
-            return -1
-
     def position_control(self):
-        dx = self.x_goal - self.x_odom
-        dy = self.y_goal - self.y_odom
-        dtheta = self.angle_diff(self.theta_goal, self.theta_odom)
+        x_command = self.x_pid.tick(self.x_odom)
+        y_command = self.y_pid.tick(self.y_odom)
+        theta_command = self.theta_pid.tick(self.theta_odom, is_angle=True)
 
-        vx = min(0.5, abs(dx*1.0))*self.sign(dx)
-        vy = min(0.5, abs(dy*1.0))*self.sign(dy)
-        vtheta = min(2.0, abs(dtheta*1.0))*self.sign(dtheta)
-        return vx, vy, vtheta
+        return x_command, y_command, theta_command
 
     def stop_ongoing_services(self):
         self.goto_service_on = False
@@ -795,9 +881,6 @@ class ZuuuHAL(Node):
         if verbose:
             self.get_logger().info("cycles : {}".format(duty_cycles))
 
-        if self.mode is not (ZuuuModes.SPEED or ZuuuModes.GOTO):
-            # Changing the mode is a way to prematurely end an on going task requested through a service
-            self.stop_ongoing_services()
         if self.mode is ZuuuModes.CMD_VEL:
             # If too much time without an order, the speeds are smoothed back to 0 for safety.
             if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
@@ -836,16 +919,22 @@ class ZuuuHAL(Node):
             x_vel, y_vel, theta_vel = 0, 0, 0
             if self.goto_service_on:
                 distance = math.sqrt(
-                    (self.x_vel_goal - self.x_odom)**2 +
-                    (self.y_vel_goal - self.y_odom)**2
+                    (self.x_goal - self.x_odom)**2 +
+                    (self.y_goal - self.y_odom)**2
                 )
-                if distance < self.xy_tol:
+                self.get_logger().info(
+                    f"ON!! dist {distance}, ang {abs(angle_diff(self.theta_goal, self.theta_odom))}")
+                if distance < self.xy_tol and abs(angle_diff(self.theta_goal, self.theta_odom)) < self.theta_tol:
                     self.goto_service_on = False
                 else:
                     x_vel, y_vel, theta_vel = self.position_control()
+                self.get_logger().info(
+                    f"Sending x_vel {x_vel}, y_vel {y_vel}, theta_vel {theta_vel}")
                 wheel_speeds = self.ik_vel(
                     x_vel, y_vel, theta_vel)
                 self.send_wheel_commands(wheel_speeds)
+            self.get_logger().info(
+                f"self.goto_service_on {self.goto_service_on}")
 
         elif self.mode is ZuuuModes.EMERGENCY_STOP:
             self.get_logger().warning("Emergency stop requested")
