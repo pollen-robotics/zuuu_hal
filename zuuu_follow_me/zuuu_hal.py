@@ -46,9 +46,9 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 (DONE) free_wheel()
 (DONE) reset_odom()
 (DONE) ik_vel is WRONG, give SI version and use the linear model to go from linear speed to PWM. Don't break old code. lin model is 22.7 * PWM = wheel_rot_speed
-- do the usual fake moving average to smooth speed commands and limit the max accel with the parameter. Do this on X, Y and theta vel, not wheel speed.
-- service for set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel_xy=, max_accel_theta=, duration=)
--> will do a service with x, y, theta and duration all mandatory. The rest become ROS parameters.
+(DONE) do the usual fake moving average to smooth speed commands and limit the max accel with the parameter. Do this on X, Y and theta vel, not wheel speed.
+(DONE)service for set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel_xy=, max_accel_theta=, duration=)
+      -> will do a service with x, y, theta and duration all mandatory. The rest become ROS parameters.
 - go_to(x, y, theta)
 
 """
@@ -269,7 +269,7 @@ class ZuuuHAL(Node):
         self.set_speed_service = self.create_service(
             SetSpeed, 'SetSpeed', self.handle_set_speed)
 
-        # TODO make this an action server instead to give appropriate feedback
+        # I chose not to make an action client. Could be changed if needed.
         self.set_speed_service = self.create_service(
             GoToXYTheta, 'GoToXYTheta', self.handle_go_to)
 
@@ -784,12 +784,20 @@ class ZuuuHAL(Node):
         vtheta = min(2.0, abs(dtheta*1.0))*self.sign(dtheta)
         return vx, vy, vtheta
 
+    def stop_ongoing_services(self):
+        self.goto_service_on = False
+        self.speed_service_on = False
+
     def main_tick(self, verbose=False):
         duty_cycles = [0, 0, 0]
         t = time.time()
         # Actually sending the commands
         if verbose:
             self.get_logger().info("cycles : {}".format(duty_cycles))
+
+        if self.mode is not (ZuuuModes.SPEED or ZuuuModes.GOTO):
+            # Changing the mode is a way to prematurely end an on going task requested through a service
+            self.stop_ongoing_services()
         if self.mode is ZuuuModes.CMD_VEL:
             # If too much time without an order, the speeds are smoothed back to 0 for safety.
             if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
