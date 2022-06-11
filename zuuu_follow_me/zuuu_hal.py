@@ -146,6 +146,8 @@ class PID:
             return abs(limit)
         elif x < -abs(limit):
             return -abs(limit)
+        else:
+            return x
 
     def tick(self, current_value, is_angle=False):
         """PID calculations. If is_angle is True, then the error will be calculated as the smallest angle between the goal and the current_value
@@ -169,12 +171,15 @@ class PID:
         p_contribution = self.p * error
         if dt != 0:
             d_contribution = self.d * delta_error / dt
+        else:
+            d_contribution = 0.0
 
         self.i_contribution = self.i_contribution + self.i * error
-        self.limit(self.i_contribution, self.max_i_contribution)
+        self.i_contribution = self.limit(
+            self.i_contribution, self.max_i_contribution)
 
         self.command = p_contribution + self.i_contribution + d_contribution
-        self.limit(self.command, self.max_command)
+        self.command = self.limit(self.command, self.max_command)
 
         return self.command
 
@@ -323,9 +328,14 @@ class ZuuuHAL(Node):
         self.speed_service_deadline = 0
         self.speed_service_on = False
         self.goto_service_on = False
-        self.x_pid = PID(1.0, 0.02, 0.0, 0.3, 0.05)
-        self.y_pid = PID(1.0, 0.02, 0.0, 0.3, 0.05)
-        self.theta_pid = PID(2.0, 0.005, 0.0, 0.7, 0.1)
+        self.x_pid = PID(P=0.0, I=0.00, D=0.0, max_command=0.3,
+                         max_i_contribution=0.025)  # 0.01
+        self.y_pid = PID(P=0.0, I=0.00, D=0.0, max_command=0.3,
+                         max_i_contribution=0.025)
+        # self.theta_pid = PID(P=5.4, I=24.8, D=0.775,
+        #                      max_command=10.0, max_i_contribution=10.0)  # 0.005
+        self.theta_pid = PID(P=2.0, I=0.0, D=0.0,
+                             max_command=3.0, max_i_contribution=0.5)  # 0.005
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -873,8 +883,8 @@ class ZuuuHAL(Node):
             self.get_logger().warning("unknown control mode '{}'".format(self.control_mode))
 
     def position_control(self):
-        x_command = self.x_pid.tick(self.x_odom)
-        y_command = self.y_pid.tick(self.y_odom)
+        x_command = 0.0  # self.x_pid.tick(self.x_odom)
+        y_command = 0.0  # self.y_pid.tick(self.y_odom)
         theta_command = self.theta_pid.tick(self.theta_odom, is_angle=True)
 
         return x_command, y_command, theta_command
