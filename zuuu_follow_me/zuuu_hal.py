@@ -16,7 +16,7 @@ from rclpy.constants import S_TO_NS
 from collections import deque
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
-from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry, SetSpeed, GoToXYTheta
+from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry, SetSpeed, GoToXYTheta, IsGoToFinished
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import SetParametersResult
 from csv import writer
@@ -30,7 +30,7 @@ import copy
 
 """
 This node has the responsability to interact with zuuu's hardware and 'ROSify' the inputs and outputs.
-Zuuu's hardware = 3 motor controllers. The LIDAR, camera and other sensors are NOT handled here.
+Zuuu's hardware here means 3 motor controllers and the LIDAR.
 Specificaly, this node will periodically read the selected measurements from the controllers of the wheels (speed, temperature, IMUs, etc) and publish them into the adequate topics (odom, etc).
 This node will also subscribe to /cmd_vel and write commands to the 3 motor controllers.
 """
@@ -367,8 +367,11 @@ class ZuuuHAL(Node):
             SetSpeed, 'SetSpeed', self.handle_set_speed)
 
         # I chose not to make an action client. Could be changed if needed.
-        self.set_speed_service = self.create_service(
+        self.go_to_service = self.create_service(
             GoToXYTheta, 'GoToXYTheta', self.handle_go_to)
+
+        self.is_go_to_finished = self.create_service(
+            IsGoToFinished, 'IsGoToFinished', self.handle_is_go_to_finished)
 
         # Initialize the transform broadcaster
         self.br = TransformBroadcaster(self)
@@ -500,6 +503,11 @@ class ZuuuHAL(Node):
         self.y_pid.set_goal(self.y_goal)
         self.theta_pid.set_goal(self.theta_goal)
         response.success = True
+        return response
+
+    def handle_is_go_to_finished(self, request, response):
+        # Returns True if the goal position is reached
+        response.success = self.goto_service_on
         return response
 
     def check_battery(self, verbose=False):

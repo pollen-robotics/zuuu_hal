@@ -91,6 +91,11 @@ ros2 service call /ResetOdometry zuuu_interfaces/srv/ResetOdometry "{}"
 ros2 service call /GoToXYTheta zuuu_interfaces/srv/GoToXYTheta "{x_goal: 0.5, y_goal: 0.0, theta_goal: 0.0}"
 ```
 
+Use the IsGoToFinished service to know when the goal position was reached:
+```
+ros2 service call /IsGoToFinished zuuu_interfaces/srv/IsGoToFinished "{}"
+```
+
 TODO add tol discussion, and get finished state service and PID parameters.
 ros2 param set /zuuu_hal xy_tol 0.001
 ros2 param set /zuuu_hal theta_tol 0.001
