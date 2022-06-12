@@ -100,6 +100,15 @@ TODO add tol discussion, and get finished state service and PID parameters.
 ros2 param set /zuuu_hal xy_tol 0.001
 ros2 param set /zuuu_hal theta_tol 0.001
 
+The Ziegler Nichols method was tried to tune the PID values. The result was too dynamic so the parameters are tuned down.
+If useful, here are the parameters before tuning them down :
+Ku = 27
+Fu = 2.3 Hz => Tu = 0.4348 s
+Classic PID : P=16.2, I = 74.5, D=0.88
+No overshoot PID : P=5.4, I = 24.8, D=0.775
+
+https://en.wikipedia.org/wiki/Ziegler%E2%80%93Nichols_method
+
 
 ### Follow me demo
 Old code that requires a controller to be connected. Allows for controller control or automatic "follow me" behaviour.
