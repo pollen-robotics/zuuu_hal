@@ -30,17 +30,31 @@ ros2 run zuuu_follow_me teleop_joy
 ```
 ros2 run zuuu_follow_me teleop_keyboard
 ```
-3) With code, sending speed commands on the 'cmd_vel' topic.
+3) Sending speed commands on the 'cmd_vel' topic.
+4) Using the [SetSpeed service](#setspeed-service)
+5) Using the [GoToXYTheta service](#gotoxytheta-service)
 
 ### Setting the drive mode
+CMD_VEL is the default mode. Services will automatically change the drive mode as needed.
+
+CMD_VEL = The commands read on the topic /cmd_vel are applied after smoothing
+BRAKE =  Sets the PWMs to 0 effectively braking the base
+FREE_WHEEL =  Sets the current control to 0, coast mode
+SPEED =  Mode used by the set_speed service to do speed control over arbitrary duration
+GOTO =  Mode used by the go_to_xytheta service to do position control in odom frame
+EMERGENCY_STOP =  Calls the emergency_shutdown method
+
 Can be tested with CLI:
 ```
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: CMD_VEL}" 
 ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: BRAKE}" 
 ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: FREE_WHEEL}" 
-ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: DRIVE}" 
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: SPEED}" 
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: GOTO}" 
 ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: EMERGENCY_STOP}" 
 ```
 -> Having a terminal ready with the EMERGENCY_STOP service call is a fast way to have a software stop. After an emergency stop, just kill and relaunch the HAL, no need to restart the robot. 
+
 
 ### Testing the odometry
 A visual test can be run using RViz (setting a high value to the LIDAR decay time is a visual trick to see the integral of the errors of the odometry).

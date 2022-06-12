@@ -22,10 +22,6 @@ from rcl_interfaces.msg import SetParametersResult
 from csv import writer
 import tf_transformations
 import copy
-# sudo apt install ros-foxy-tf-transformations
-# sudo pip3 install transforms3d
-# q = tf_transformations.quaternion_from_euler(r, p, y)
-# r, p, y = tf_transformations.euler_from_quaternion(quaternion)
 
 
 """
@@ -37,11 +33,9 @@ This node will also subscribe to /cmd_vel and write commands to the 3 motor cont
 
 """
 TODO :
-- Read IMU (not supported by PyVesc out of the box). Hints: create a message (examples in getters.py) with "VedderCmd.COMM_GET_IMU_DATA".
-The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the file "datatypes.h" in vesc_project.
-- (DONE) Modify zuuu_description to be able to launch the description without Gazebo
-- (DONE, PENDING TESTS) Connect the rest of the navigation stack
-- Code functions for :
+(DONE) Modify zuuu_description to be able to launch the description without Gazebo
+(DONE, PENDING TESTS) Connect the rest of the navigation stack
+(DONE) Code functions for :
 (DONE) brake()
 (DONE) free_wheel()
 (DONE) reset_odom()
@@ -50,8 +44,10 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 (DONE)service for set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel_xy=, max_accel_theta=, duration=)
       -> will do a service with x, y, theta and duration all mandatory. The rest become ROS parameters.
 (DONE) go_to(x, y, theta)
-- PID as parameters
+(DONE) PID as parameters
 
+- Read IMU (not supported by PyVesc out of the box). Hints: create a message (examples in getters.py) with "VedderCmd.COMM_GET_IMU_DATA".
+The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the file "datatypes.h" in vesc_project.
 """
 
 # Interesting stuff can be found in Modern Robotics' chapters:
@@ -86,7 +82,7 @@ class ZuuuModes(Enum):
     Zuuu drive modes
     CMD_VEL = The commands read on the topic /cmd_vel are applied after smoothing
     BRAKE =  Sets the PWMs to 0 effectively braking the base
-    FREE_WHEEL =  Sets the current contrl to 0, coast mode
+    FREE_WHEEL =  Sets the current control to 0, coast mode
     SPEED =  Mode used by the set_speed service to do speed control over arbitrary duration
     GOTO =  Mode used by the go_to_xytheta service to do position control in odom frame
     EMERGENCY_STOP =  Calls the emergency_shutdown method
