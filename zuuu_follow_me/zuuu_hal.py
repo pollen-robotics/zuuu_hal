@@ -528,22 +528,22 @@ class ZuuuHAL(Node):
         response.delta_y = self.y_goal - self.y_odom
         response.delta_theta = angle_diff(self.theta_goal, self.theta_odom)
         response.distance = math.sqrt(
-                    (self.x_goal - self.x_odom)**2 +
-                    (self.y_goal - self.y_odom)**2
+            (self.x_goal - self.x_odom)**2 +
+            (self.y_goal - self.y_odom)**2)
         return response
 
     def check_battery(self, verbose=False):
-        t=time.time()
+        t = time.time()
         if verbose:
             self.print_all_measurements()
         if (t - self.measurements_t) > (self.omnibase.battery_check_period+1):
             self.get_logger().warning("Zuuu's measurements are not made often enough. Reading now.")
             self.read_measurements()
-        warn_voltage=self.omnibase.battery_nb_cells *
+        warn_voltage = self.omnibase.battery_nb_cells * \
             self.omnibase.battery_cell_warn_voltage
-        min_voltage=self.omnibase.battery_nb_cells *
+        min_voltage = self.omnibase.battery_nb_cells * \
             self.omnibase.battery_cell_min_voltage
-        voltage=self.battery_voltage
+        voltage = self.battery_voltage
 
         if (min_voltage < voltage < warn_voltage):
             self.get_logger().warning("Battery voltage LOW ({}V). Consider recharging. Warning threshold: {}V, stop threshold: {}V".format(
@@ -567,31 +567,31 @@ class ZuuuHAL(Node):
         sys.exit(1)
 
     def cmd_vel_callback(self, msg):
-        self.cmd_vel=msg
-        self.cmd_vel_t0=time.time()
+        self.cmd_vel = msg
+        self.cmd_vel_t0 = time.time()
 
     def scan_filter_callback(self, msg):
-        filtered_scan=LaserScan()
-        filtered_scan.header=copy.deepcopy(msg.header)
-        filtered_scan.angle_min=msg.angle_min
-        filtered_scan.angle_max=msg.angle_max
-        filtered_scan.angle_increment=msg.angle_increment
-        filtered_scan.time_increment=msg.time_increment
-        filtered_scan.scan_time=msg.scan_time
-        filtered_scan.range_min=msg.range_min
-        filtered_scan.range_max=msg.range_max
-        ranges=[]
-        intensities=[]
+        filtered_scan = LaserScan()
+        filtered_scan.header = copy.deepcopy(msg.header)
+        filtered_scan.angle_min = msg.angle_min
+        filtered_scan.angle_max = msg.angle_max
+        filtered_scan.angle_increment = msg.angle_increment
+        filtered_scan.time_increment = msg.time_increment
+        filtered_scan.scan_time = msg.scan_time
+        filtered_scan.range_min = msg.range_min
+        filtered_scan.range_max = msg.range_max
+        ranges = []
+        intensities = []
         for i, r in enumerate(msg.ranges):
-            angle=msg.angle_min + i*msg.angle_increment
+            angle = msg.angle_min + i*msg.angle_increment
             if angle > self.laser_upper_angle or angle < self.laser_lower_angle:
                 ranges.append(0.0)
                 intensities.append(0.0)
             else:
                 ranges.append(r)
                 intensities.append(msg.intensities[i])
-        filtered_scan.ranges=ranges
-        filtered_scan.intensities=intensities
+        filtered_scan.ranges = ranges
+        filtered_scan.intensities = intensities
         self.scan_pub.publish(filtered_scan)
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot):
@@ -603,18 +603,18 @@ class ZuuuHAL(Node):
         """Uses a simple affine model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
         """
         # Creating an arteficial null zone to avoid undesired behaviours for very small rot speeds
-        epsilon=0.02
+        epsilon = 0.02
         if rot > epsilon:
-            pwm=0.0418 * rot + 0.0126
+            pwm = 0.0418 * rot + 0.0126
         elif rot < -epsilon:
-            pwm=0.0418 * rot - 0.0126
+            pwm = 0.0418 * rot - 0.0126
         else:
-            pwm=0.0
+            pwm = 0.0
 
         return pwm
 
     def ik_vel_to_pwm(self, x_vel, y_vel, rot_vel):
-        rot_vels=self.ik_vel(x_vel, y_vel, rot_vel)
+        rot_vels = self.ik_vel(x_vel, y_vel, rot_vel)
         return [self.wheel_rot_speed_to_pwm(rot_vel) for rot_vel in rot_vels]
 
     def ik_vel_old(self, x, y, rot):
@@ -626,10 +626,10 @@ class ZuuuHAL(Node):
             rot (float): rotational speed (between -1 and 1). Positive counter-clock wise.
         """
 
-        cycle_back=-y + rot
-        cycle_right=(-y*np.cos(120*np.pi/180)) + \
+        cycle_back = -y + rot
+        cycle_right = (-y*np.cos(120*np.pi/180)) + \
             (x*np.sin(120*np.pi/180)) + rot
-        cycle_left=(-y*np.cos(240*np.pi/180)) + \
+        cycle_left = (-y*np.cos(240*np.pi/180)) + \
             (x*np.sin(240*np.pi/180)) + rot
 
         return [cycle_back, cycle_right, cycle_left]
@@ -643,11 +643,11 @@ class ZuuuHAL(Node):
             rot (float): rotational speed (rad/s). Positive counter-clock wise.
         """
 
-        wheel_rot_speed_back=(1/self.omnibase.wheel_radius) * \
+        wheel_rot_speed_back = (1/self.omnibase.wheel_radius) * \
             (self.omnibase.wheel_to_center*rot_vel - y_vel)
-        wheel_rot_speed_right=(1/self.omnibase.wheel_radius) * (
+        wheel_rot_speed_right = (1/self.omnibase.wheel_radius) * (
             self.omnibase.wheel_to_center*rot_vel + y_vel/2.0 + math.sin(math.pi/3)*x_vel)
-        wheel_rot_speed_left=(1/self.omnibase.wheel_radius) * (self.omnibase.wheel_to_center *
+        wheel_rot_speed_left = (1/self.omnibase.wheel_radius) * (self.omnibase.wheel_to_center *
                                                                  rot_vel + math.sin(math.pi/3)*y_vel/2 - math.sin(math.pi/3)*x_vel)
 
         return [wheel_rot_speed_back, wheel_rot_speed_right, wheel_rot_speed_left]
@@ -662,30 +662,30 @@ class ZuuuHAL(Node):
             rot_b (float): rpm speed of the back wheel
         """
         # rpm to rad/s then m/s
-        speed_l=(2*math.pi*rot_l/60)*self.omnibase.wheel_radius
-        speed_r=(2*math.pi*rot_r/60)*self.omnibase.wheel_radius
-        speed_b=(2*math.pi*rot_b/60)*self.omnibase.wheel_radius
+        speed_l = (2*math.pi*rot_l/60)*self.omnibase.wheel_radius
+        speed_r = (2*math.pi*rot_r/60)*self.omnibase.wheel_radius
+        speed_b = (2*math.pi*rot_b/60)*self.omnibase.wheel_radius
 
-        x_vel=-speed_l*(1/(2*math.sin(math.pi/3))) + \
+        x_vel = -speed_l*(1/(2*math.sin(math.pi/3))) + \
             speed_r*(1/(2*math.sin(math.pi/3)))
-        y_vel=-speed_b*2/3.0 + speed_l*1/3.0 + speed_r*1/3.0
-        theta_vel=(speed_l + speed_r + speed_b) / \
+        y_vel = -speed_b*2/3.0 + speed_l*1/3.0 + speed_r*1/3.0
+        theta_vel = (speed_l + speed_r + speed_b) / \
             (3*self.omnibase.wheel_to_center)
 
         return [x_vel, y_vel, theta_vel]
 
     def filter_speed_goals(self):
-        self.x_vel_goal_filtered=(self.x_vel_goal +
+        self.x_vel_goal_filtered = (self.x_vel_goal +
                                     self.smoothing_factor*self.x_vel_goal_filtered)/(1+self.smoothing_factor)
-        self.y_vel_goal_filtered=(self.y_vel_goal +
+        self.y_vel_goal_filtered = (self.y_vel_goal +
                                     self.smoothing_factor*self.y_vel_goal_filtered)/(1+self.smoothing_factor)
-        self.theta_vel_goal_filtered=(self.theta_vel_goal +
+        self.theta_vel_goal_filtered = (self.theta_vel_goal +
                                         self.smoothing_factor*self.theta_vel_goal_filtered)/(1+self.smoothing_factor)
 
     def format_measurements(self, measurements):
         if measurements is None:
             return "None"
-        to_print=""
+        to_print = ""
         to_print += "temp_fet:{}\n".format(measurements.temp_fet)
         to_print += "temp_motor:{}\n".format(measurements.temp_motor)
         to_print += "avg_motor_current:{}\n".format(
@@ -713,7 +713,7 @@ class ZuuuHAL(Node):
         return to_print
 
     def print_all_measurements(self):
-        to_print="\n*** back_wheel measurements:\n"
+        to_print = "\n*** back_wheel measurements:\n"
         to_print += self.format_measurements(
             self.omnibase.back_wheel_measurements)
         to_print += "\n\n*** left_wheel:\n"
@@ -733,95 +733,95 @@ class ZuuuHAL(Node):
     def publish_wheel_speeds(self):
         # If the measurements are None, not publishing
         if self.omnibase.back_wheel_measurements is not None:
-            rpm_back=Float32()
-            rpm_back.data=float(self.omnibase.back_wheel_measurements.rpm)
+            rpm_back = Float32()
+            rpm_back.data = float(self.omnibase.back_wheel_measurements.rpm)
             self.pub_back_wheel_rpm.publish(rpm_back)
 
         if self.omnibase.left_wheel_measurements is not None:
-            rpm_left=Float32()
-            rpm_left.data=float(self.omnibase.left_wheel_measurements.rpm)
+            rpm_left = Float32()
+            rpm_left.data = float(self.omnibase.left_wheel_measurements.rpm)
             self.pub_left_wheel_rpm.publish(rpm_left)
 
         if self.omnibase.right_wheel_measurements is not None:
-            rpm_right=Float32()
-            rpm_right.data=float(self.omnibase.right_wheel_measurements.rpm)
+            rpm_right = Float32()
+            rpm_right.data = float(self.omnibase.right_wheel_measurements.rpm)
             self.pub_right_wheel_rpm.publish(rpm_right)
 
     def update_wheel_speeds(self):
         # Keeping a local value of the wheel speeds to handle None measurements (we'll use the last valid measure)
         if self.omnibase.back_wheel_measurements is not None:
-            value=float(
+            value = float(
                 self.omnibase.back_wheel_measurements.rpm)
-            self.omnibase.back_wheel_rpm=value
+            self.omnibase.back_wheel_rpm = value
             self.omnibase.back_wheel_rpm_deque.appendleft(value)
-            self.omnibase.back_wheel_avg_rpm=self.omnibase.deque_to_avg(
+            self.omnibase.back_wheel_avg_rpm = self.omnibase.deque_to_avg(
                 self.omnibase.back_wheel_rpm_deque)
         else:
             self.omnibase.back_wheel_nones += 1
 
         if self.omnibase.left_wheel_measurements is not None:
-            value=float(
+            value = float(
                 self.omnibase.left_wheel_measurements.rpm)
-            self.omnibase.left_wheel_rpm=value
+            self.omnibase.left_wheel_rpm = value
             self.omnibase.left_wheel_rpm_deque.appendleft(value)
-            self.omnibase.left_wheel_avg_rpm=self.omnibase.deque_to_avg(
+            self.omnibase.left_wheel_avg_rpm = self.omnibase.deque_to_avg(
                 self.omnibase.left_wheel_rpm_deque)
         else:
             self.omnibase.left_wheel_nones += 1
 
         if self.omnibase.right_wheel_measurements is not None:
-            value=float(
+            value = float(
                 self.omnibase.right_wheel_measurements.rpm)
-            self.omnibase.right_wheel_rpm=value
+            self.omnibase.right_wheel_rpm = value
             self.omnibase.right_wheel_rpm_deque.appendleft(value)
-            self.omnibase.right_wheel_avg_rpm=self.omnibase.deque_to_avg(
+            self.omnibase.right_wheel_avg_rpm = self.omnibase.deque_to_avg(
                 self.omnibase.right_wheel_rpm_deque)
         else:
             self.omnibase.right_wheel_nones += 1
 
     def publish_odometry_and_tf(self):
         # Odom
-        odom=Odometry()
-        odom.header.frame_id="odom"
-        odom.header.stamp=self.measure_timestamp.to_msg()
-        odom.child_frame_id="base_footprint"
-        odom.pose.pose.position.x=self.x_odom
-        odom.pose.pose.position.y=self.y_odom
-        odom.pose.pose.position.z=0.0
-        odom.twist.twist.linear.x=self.vx
-        odom.twist.twist.linear.y=self.vy
-        odom.twist.twist.angular.z=self.vtheta
+        odom = Odometry()
+        odom.header.frame_id = "odom"
+        odom.header.stamp = self.measure_timestamp.to_msg()
+        odom.child_frame_id = "base_footprint"
+        odom.pose.pose.position.x = self.x_odom
+        odom.pose.pose.position.y = self.y_odom
+        odom.pose.pose.position.z = 0.0
+        odom.twist.twist.linear.x = self.vx
+        odom.twist.twist.linear.y = self.vy
+        odom.twist.twist.angular.z = self.vtheta
 
-        q=tf_transformations.quaternion_from_euler(0.0, 0.0, self.theta_odom)
-        odom.pose.pose.orientation.x=q[0]
-        odom.pose.pose.orientation.y=q[1]
-        odom.pose.pose.orientation.z=q[2]
-        odom.pose.pose.orientation.w=q[3]
+        q = tf_transformations.quaternion_from_euler(0.0, 0.0, self.theta_odom)
+        odom.pose.pose.orientation.x = q[0]
+        odom.pose.pose.orientation.y = q[1]
+        odom.pose.pose.orientation.z = q[2]
+        odom.pose.pose.orientation.w = q[3]
 
         # TODO tune these numbers if needed
-        odom.pose.covariance=np.diag(
+        odom.pose.covariance = np.diag(
             [1e-2, 1e-2, 1e-2, 1e3, 1e3, 1e-1]).ravel()
-        odom.twist.twist.linear.x=self.x_vel
-        odom.twist.twist.linear.y=self.y_vel
-        odom.twist.twist.angular.z=self.theta_vel
+        odom.twist.twist.linear.x = self.x_vel
+        odom.twist.twist.linear.y = self.y_vel
+        odom.twist.twist.angular.z = self.theta_vel
 
-        odom.twist.covariance=np.diag(
+        odom.twist.covariance = np.diag(
             [1e-2, 1e3, 1e3, 1e3, 1e3, 1e-2]).ravel()
         self.pub_odom.publish(odom)
 
         # TF
-        t=TransformStamped()
-        t.header.stamp=self.measure_timestamp.to_msg()
-        t.header.frame_id='odom'
-        t.child_frame_id='base_footprint'
+        t = TransformStamped()
+        t.header.stamp = self.measure_timestamp.to_msg()
+        t.header.frame_id = 'odom'
+        t.child_frame_id = 'base_footprint'
 
-        t.transform.translation.x=self.x_odom
-        t.transform.translation.y=self.y_odom
-        t.transform.translation.z=0.0
-        t.transform.rotation.x=q[0]
-        t.transform.rotation.y=q[1]
-        t.transform.rotation.z=q[2]
-        t.transform.rotation.w=q[3]
+        t.transform.translation.x = self.x_odom
+        t.transform.translation.y = self.y_odom
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
 
         self.br.sendTransform(t)
 
@@ -830,32 +830,32 @@ class ZuuuHAL(Node):
         # -> By reading the encoder ticks directly and making the calculations here we could make this a tad better.
 
         # Local speeds in egocentric frame. Care, "rpm" are actually erpm and need to be divided by half the amount of magnetic poles to get the actual rpm.
-        self.x_vel, self.y_vel, self.theta_vel=self.dk_vel(self.omnibase.left_wheel_rpm/self.omnibase.half_poles,
+        self.x_vel, self.y_vel, self.theta_vel = self.dk_vel(self.omnibase.left_wheel_rpm/self.omnibase.half_poles,
                                                              self.omnibase.right_wheel_rpm/self.omnibase.half_poles, self.omnibase.back_wheel_rpm/self.omnibase.half_poles)
         # self.get_logger().info(
         #     "IK vel : {:.2f}, {:.2f}, {:.2f}".format(self.x_vel, self.y_vel, self.theta_vel))
         # Applying the small displacement in the world-fixed odom frame (simple 2D rotation)
-        dt_duration=(self.measure_timestamp - self.old_measure_timestamp)
-        dt_seconds=dt_duration.nanoseconds/S_TO_NS
-        dx=(self.x_vel * math.cos(self.theta_odom) - self.y_vel *
+        dt_duration = (self.measure_timestamp - self.old_measure_timestamp)
+        dt_seconds = dt_duration.nanoseconds/S_TO_NS
+        dx = (self.x_vel * math.cos(self.theta_odom) - self.y_vel *
               math.sin(self.theta_odom)) * dt_seconds
-        dy=(self.x_vel * math.sin(self.theta_odom) + self.y_vel *
+        dy = (self.x_vel * math.sin(self.theta_odom) + self.y_vel *
               math.cos(self.theta_odom)) * dt_seconds
-        dtheta=self.theta_vel*dt_seconds
+        dtheta = self.theta_vel*dt_seconds
         self.x_odom += dx
         self.y_odom += dy
         self.theta_odom += dtheta
 
-        self.vx=dx / dt_seconds
-        self.vy=dy / dt_seconds
-        self.vtheta=dtheta / dt_seconds
+        self.vx = dx / dt_seconds
+        self.vy = dy / dt_seconds
+        self.vtheta = dtheta / dt_seconds
         if self.reset_odom:
             # Resetting asynchronously to prevent race conditions.
             # dx, dy and dteta remain correct even on the reset tick
-            self.reset_odom=False
-            self.x_odom=0.0
-            self.y_odom=0.0
-            self.theta_odom=0.0
+            self.reset_odom = False
+            self.x_odom = 0.0
+            self.y_odom = 0.0
+            self.theta_odom = 0.0
 
         self.publish_odometry_and_tf()
 
@@ -863,19 +863,19 @@ class ZuuuHAL(Node):
         # Between +- max_duty_cyle
         for i in range(len(duty_cycles)):
             if duty_cycles[i] < 0:
-                duty_cycles[i]=max(-self.max_duty_cyle, duty_cycles[i])
+                duty_cycles[i] = max(-self.max_duty_cyle, duty_cycles[i])
             else:
-                duty_cycles[i]=min(self.max_duty_cyle, duty_cycles[i])
+                duty_cycles[i] = min(self.max_duty_cyle, duty_cycles[i])
         return duty_cycles
 
     def read_measurements(self):
         self.omnibase.read_all_measurements()
         if self.omnibase.back_wheel_measurements is not None:
-            self.battery_voltage=self.omnibase.back_wheel_measurements.v_in
+            self.battery_voltage = self.omnibase.back_wheel_measurements.v_in
         elif self.omnibase.left_wheel_measurements is not None:
-            self.battery_voltage=self.omnibase.left_wheel_measurements.v_in
+            self.battery_voltage = self.omnibase.left_wheel_measurements.v_in
         elif self.omnibase.right_wheel_measurements is not None:
-            self.battery_voltage=self.omnibase.right_wheel_measurements.v_in
+            self.battery_voltage = self.omnibase.right_wheel_measurements.v_in
         else:
             # Decidemment ! Keeping last valid measure...
             self.nb_full_com_fails += 1
@@ -886,14 +886,14 @@ class ZuuuHAL(Node):
                 self.emergency_shutdown()
             return
         # Read success
-        self.nb_full_com_fails=0
-        self.measurements_t=time.time()
+        self.nb_full_com_fails = 0
+        self.measurements_t = time.time()
 
     def send_wheel_commands(self, wheel_speeds):
         if self.control_mode is ZuuuControlModes.OPEN_LOOP:
-            duty_cycles=[self.wheel_rot_speed_to_pwm(
+            duty_cycles = [self.wheel_rot_speed_to_pwm(
                 wheel_speed) for wheel_speed in wheel_speeds]
-            duty_cycles=self.limit_duty_cycles(duty_cycles)
+            duty_cycles = self.limit_duty_cycles(duty_cycles)
             self.omnibase.back_wheel.set_duty_cycle(
                 duty_cycles[0])
             self.omnibase.left_wheel.set_duty_cycle(
@@ -912,19 +912,19 @@ class ZuuuHAL(Node):
             self.get_logger().warning("unknown control mode '{}'".format(self.control_mode))
 
     def position_control(self):
-        x_command=0.0  # self.x_pid.tick(self.x_odom)
-        y_command=0.0  # self.y_pid.tick(self.y_odom)
-        theta_command=self.theta_pid.tick(self.theta_odom, is_angle=True)
+        x_command = 0.0  # self.x_pid.tick(self.x_odom)
+        y_command = 0.0  # self.y_pid.tick(self.y_odom)
+        theta_command = self.theta_pid.tick(self.theta_odom, is_angle=True)
 
         return x_command, y_command, theta_command
 
     def stop_ongoing_services(self):
-        self.goto_service_on=False
-        self.speed_service_on=False
+        self.goto_service_on = False
+        self.speed_service_on = False
 
     def main_tick(self, verbose=False):
-        duty_cycles=[0, 0, 0]
-        t=time.time()
+        duty_cycles = [0, 0, 0]
+        t = time.time()
         # Actually sending the commands
         if verbose:
             self.get_logger().info("cycles : {}".format(duty_cycles))
@@ -932,15 +932,15 @@ class ZuuuHAL(Node):
         if self.mode is ZuuuModes.CMD_VEL:
             # If too much time without an order, the speeds are smoothed back to 0 for safety.
             if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
-                self.x_vel_goal=self.cmd_vel.linear.x
-                self.y_vel_goal=self.cmd_vel.linear.y
-                self.theta_vel_goal=self.cmd_vel.angular.z
+                self.x_vel_goal = self.cmd_vel.linear.x
+                self.y_vel_goal = self.cmd_vel.linear.y
+                self.theta_vel_goal = self.cmd_vel.angular.z
             else:
-                self.x_vel_goal=0.0
-                self.y_vel_goal=0.0
-                self.theta_vel_goal=0.0
+                self.x_vel_goal = 0.0
+                self.y_vel_goal = 0.0
+                self.theta_vel_goal = 0.0
             self.filter_speed_goals()
-            wheel_speeds=self.ik_vel(
+            wheel_speeds = self.ik_vel(
                 self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
             self.send_wheel_commands(wheel_speeds)
         elif self.mode is ZuuuModes.BRAKE:
@@ -955,30 +955,30 @@ class ZuuuHAL(Node):
             if self.speed_service_deadline < time.time():
                 if self.speed_service_on:
                     self.get_logger().info("End of set speed duration, setting speeds to 0")
-                self.speed_service_on=False
-                self.x_vel_goal=0
-                self.y_vel_goal=0
-                self.theta_vel_goal=0
+                self.speed_service_on = False
+                self.x_vel_goal = 0
+                self.y_vel_goal = 0
+                self.theta_vel_goal = 0
             self.filter_speed_goals()
-            wheel_speeds=self.ik_vel(
+            wheel_speeds = self.ik_vel(
                 self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
             self.send_wheel_commands(wheel_speeds)
         elif self.mode is ZuuuModes.GOTO:
-            x_vel, y_vel, theta_vel=0, 0, 0
+            x_vel, y_vel, theta_vel = 0, 0, 0
             if self.goto_service_on:
-                distance=math.sqrt(
+                distance = math.sqrt(
                     (self.x_goal - self.x_odom)**2 +
                     (self.y_goal - self.y_odom)**2
                 )
                 self.get_logger().info(
                     f"ON!! dist {distance}, ang {abs(angle_diff(self.theta_goal, self.theta_odom))}")
                 if distance < self.xy_tol and abs(angle_diff(self.theta_goal, self.theta_odom)) < self.theta_tol:
-                    self.goto_service_on=False
+                    self.goto_service_on = False
                 else:
-                    x_vel, y_vel, theta_vel=self.position_control()
+                    x_vel, y_vel, theta_vel = self.position_control()
                 self.get_logger().info(
                     f"Sending x_vel {x_vel}, y_vel {y_vel}, theta_vel {theta_vel}")
-                wheel_speeds=self.ik_vel(
+                wheel_speeds = self.ik_vel(
                     x_vel, y_vel, theta_vel)
                 self.send_wheel_commands(wheel_speeds)
             self.get_logger().info(
@@ -990,10 +990,10 @@ class ZuuuHAL(Node):
 
         else:
             self.get_logger().warning("unknown mode '{}', setting it to brake".format(self.mode))
-            self.mode=ZuuuModes.BRAKE
+            self.mode = ZuuuModes.BRAKE
 
-        self.old_measure_timestamp=self.measure_timestamp
-        self.measure_timestamp=self.get_clock().now()
+        self.old_measure_timestamp = self.measure_timestamp
+        self.measure_timestamp = self.get_clock().now()
 
         # Reading the measurements (this is what takes most of the time, ~9ms)
         self.read_measurements()
@@ -1013,11 +1013,11 @@ class ZuuuHAL(Node):
                 self.x_odom, self.y_odom, self.theta_odom))
 
         # Time measurement
-        dt=time.time() - t
+        dt = time.time() - t
         if dt == 0:
-            f=0
+            f = 0
         else:
-            f=1/dt
+            f = 1/dt
         if verbose:
             self.get_logger().info(
                 "zuuu tick potential freq: {:.0f}Hz (dt={:.0f}ms)".format(f, 1000*dt))
@@ -1025,7 +1025,7 @@ class ZuuuHAL(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node=ZuuuHAL()
+    node = ZuuuHAL()
 
     try:
         rclpy.spin(node)
