@@ -582,10 +582,24 @@ class ZuuuHAL(Node):
         filtered_scan.intensities = intensities
         self.scan_pub.publish(filtered_scan)
 
-    def wheel_rot_speed_to_pwm(self, rot):
+    def wheel_rot_speed_to_pwm_no_friction(self, rot):
         """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
         """
         return rot/22.7
+
+    def wheel_rot_speed_to_pwm(self, rot):
+        """Uses a simple affine model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
+        """
+        # Creating an arteficial null zone to avoid undesired behaviours for very small rot speeds
+        epsilon = 0.02
+        if rot > epsilon:
+            pwm = 0.0418 * rot + 0.0126
+        elif rot < -epsilon:
+            pwm = 0.0418 * rot - 0.0126
+        else:
+            pwm = 0.0
+
+        return pwm
 
     def ik_vel_to_pwm(self, x_vel, y_vel, rot_vel):
         rot_vels = self.ik_vel(x_vel, y_vel, rot_vel)
