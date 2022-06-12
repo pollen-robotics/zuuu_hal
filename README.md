@@ -21,7 +21,7 @@ ros2 launch zuuu_follow_me hal_launch.py
 ```
 
 ### Sending speed commands
-Once the zuuu_hal is started, you can take control of the mobile base with:
+Once the zuuu_hal is started, one can take control of the mobile base with:
 1) A controller
 ```
 ros2 run zuuu_follow_me teleop_joy
@@ -40,9 +40,10 @@ ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: FREE_WHEE
 ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: DRIVE}" 
 ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: EMERGENCY_STOP}" 
 ```
+-> Having a terminal ready with the EMERGENCY_STOP service call is a fast way to have a software stop. After an emergency stop, just kill and relaunch the HAL, no need to restart the robot. 
 
 ### Testing the odometry
-You can run a visual test using RViz (setting a high value to the LIDAR decay time is a visual trick to see the integral of the errors of the odometry).
+A visual test can be run using RViz (setting a high value to the LIDAR decay time is a visual trick to see the integral of the errors of the odometry).
 This launch file runs both the HAL, the lidar node and RViz:
 ```
 ros2 launch zuuu_description zuuu_bringup.launch.py
@@ -85,7 +86,7 @@ ros2 run zuuu_follow_me set_speed_service_test
 
 ### GoToXYTheta service
 Sets a goal position in the odom frame. Zuuu will try to reach that position using 3 separate PIDs (one for x, one for y and one for theta).
-Zuuu should go to position X=0.5, y=0.0, theta=0.0. If you reset the odom frame, this should be equivalent to moving forward 0.5m.
+Zuuu should go to position X=0.5, y=0.0, theta=0.0. If one resets the odom frame, this should be equivalent to moving forward 0.5m.
 ```
 ros2 service call /ResetOdometry zuuu_interfaces/srv/ResetOdometry "{}"
 ros2 service call /GoToXYTheta zuuu_interfaces/srv/GoToXYTheta "{x_goal: 0.5, y_goal: 0.0, theta_goal: 0.0}"
@@ -96,18 +97,26 @@ Use the IsGoToFinished service to know when the goal position was reached:
 ros2 service call /IsGoToFinished zuuu_interfaces/srv/IsGoToFinished "{}"
 ```
 The goal is reached when the distance between the goal position and the position of the robot is less than the parameter xy_tol meters AND the angle error is less that theta_tol rads.
-These parameters can be changed in the config file (you might need to recompile to make any changes effective) or live through ROS CLI interface:
+These parameters can be changed in the config file (recompiling might be needed to make any changes effective) or live through ROS CLI interface:
 ```
 ros2 param set /zuuu_hal xy_tol 0.15
 ros2 param set /zuuu_hal theta_tol 0.2
 ```
+Once the goal is reached, the PWM values of the motors will be set to 0 until a new goal is received. This will brake Zuuu but the wheels can still be rotated if enough force is applied. 
+To get a better disturbance rejection, the PIDs can always stay ON by applying unreachable tolerances:
+```
+ros2 param set /zuuu_hal xy_tol 0.0
+ros2 param set /zuuu_hal theta_tol 0.0
+```
+-> A good example where this trick is needed is if Zuuu needs to stay stationary on a slope.
 
-The Ziegler Nichols method was tried to tune the PID values. The result was too dynamic so the parameters are tuned down.
-If useful, here are the parameters before tuning them down :
+
+
+The Ziegler Nichols method was tried to tune the PID values. The result was way too dynamic so the parameters are tuned down.
+If useful, here are the parameters found:
 Ku = 27
 Fu = 2.3 Hz => Tu = 0.4348 s
-Classic PID : P=16.2, I = 74.5, D=0.88
-No overshoot PID : P=5.4, I = 24.8, D=0.775
+
 
 https://en.wikipedia.org/wiki/Ziegler%E2%80%93Nichols_method
 

@@ -324,7 +324,7 @@ class ZuuuHAL(Node):
         self.theta_goal = 0.0
         self.reset_odom = False
         self.battery_voltage = 25.0
-        self.mode = ZuuuModes.SPEED
+        self.mode = ZuuuModes.CMD_VEL
         self.speed_service_deadline = 0
         self.speed_service_on = False
         self.goto_service_on = False
