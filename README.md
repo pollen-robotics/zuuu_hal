@@ -95,10 +95,12 @@ Use the IsGoToFinished service to know when the goal position was reached:
 ```
 ros2 service call /IsGoToFinished zuuu_interfaces/srv/IsGoToFinished "{}"
 ```
-
-TODO add tol discussion, and get finished state service and PID parameters.
-ros2 param set /zuuu_hal xy_tol 0.001
-ros2 param set /zuuu_hal theta_tol 0.001
+The goal is reached when the distance between the goal position and the position of the robot is less than the parameter xy_tol meters AND the angle error is less that theta_tol rads.
+These parameters can be changed in the config file (you might need to recompile to make any changes effective) or live through ROS CLI interface:
+```
+ros2 param set /zuuu_hal xy_tol 0.15
+ros2 param set /zuuu_hal theta_tol 0.2
+```
 
 The Ziegler Nichols method was tried to tune the PID values. The result was too dynamic so the parameters are tuned down.
 If useful, here are the parameters before tuning them down :
