@@ -328,14 +328,12 @@ class ZuuuHAL(Node):
         self.speed_service_deadline = 0
         self.speed_service_on = False
         self.goto_service_on = False
-        self.x_pid = PID(P=0.0, I=0.00, D=0.0, max_command=0.3,
-                         max_i_contribution=0.025)  # 0.01
-        self.y_pid = PID(P=0.0, I=0.00, D=0.0, max_command=0.3,
-                         max_i_contribution=0.025)
-        # self.theta_pid = PID(P=5.4, I=24.8, D=0.775,
-        #                      max_command=10.0, max_i_contribution=10.0)  # 0.005
-        self.theta_pid = PID(P=2.0, I=0.0, D=0.0,
-                             max_command=3.0, max_i_contribution=0.5)  # 0.005
+        self.x_pid = PID(P=1.5, I=0.00, D=0.0, max_command=0.5,
+                         max_i_contribution=0.0)
+        self.y_pid = PID(P=1.5, I=0.00, D=0.0, max_command=0.5,
+                         max_i_contribution=0.0)
+        self.theta_pid = PID(P=3.0, I=0.0, D=0.0,
+                             max_command=1.6, max_i_contribution=0.0)
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -912,8 +910,8 @@ class ZuuuHAL(Node):
             self.get_logger().warning("unknown control mode '{}'".format(self.control_mode))
 
     def position_control(self):
-        x_command = 0.0  # self.x_pid.tick(self.x_odom)
-        y_command = 0.0  # self.y_pid.tick(self.y_odom)
+        x_command = self.x_pid.tick(self.x_odom)
+        y_command = self.y_pid.tick(self.y_odom)
         theta_command = self.theta_pid.tick(self.theta_odom, is_angle=True)
 
         return x_command, y_command, theta_command

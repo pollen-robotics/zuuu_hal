@@ -92,7 +92,12 @@ ros2 service call /ResetOdometry zuuu_interfaces/srv/ResetOdometry "{}"
 ros2 service call /GoToXYTheta zuuu_interfaces/srv/GoToXYTheta "{x_goal: 0.5, y_goal: 0.0, theta_goal: 0.0}"
 ```
 
-Use the IsGoToFinished service to know when the goal position was reached:
+To check the current distance from the goal:
+```
+ros2 service call /DistanceToGoal zuuu_interfaces/srv/DistanceToGoal "{}"
+```
+
+Use the IsGoToFinished service to know if the goal position is reached:
 ```
 ros2 service call /IsGoToFinished zuuu_interfaces/srv/IsGoToFinished "{}"
 ```
@@ -108,15 +113,14 @@ To get a better disturbance rejection, the PIDs can always stay ON by applying u
 ros2 param set /zuuu_hal xy_tol 0.0
 ros2 param set /zuuu_hal theta_tol 0.0
 ```
--> A good example where this trick is needed is if Zuuu needs to stay stationary on a slope.
+-> A good example where this setup is needed is if Zuuu needs to stay stationary on a slope.
 
 
 
-The Ziegler Nichols method was tried to tune the PID values. The result was way too dynamic so the parameters are tuned down.
-If useful, here are the parameters found:
+*Note:* The Ziegler Nichols method was tried to tune the PID values. The result was way too dynamic so the parameters have been tuned down.
+If useful, here are the parameters found for the theta PID:
 Ku = 27
 Fu = 2.3 Hz => Tu = 0.4348 s
-
 
 https://en.wikipedia.org/wiki/Ziegler%E2%80%93Nichols_method
 
