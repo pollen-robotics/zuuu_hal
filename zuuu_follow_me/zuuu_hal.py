@@ -16,7 +16,9 @@ from rclpy.constants import S_TO_NS
 from collections import deque
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
-from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry, SetSpeed, GoToXYTheta, IsGoToFinished, DistanceToGoal
+from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry
+from zuuu_interfaces.srv import GoToXYTheta, IsGoToFinished, DistanceToGoal
+from zuuu_interfaces.srv import SetSpeed, GetBatteryVoltage
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import SetParametersResult
 from csv import writer
@@ -380,6 +382,9 @@ class ZuuuHAL(Node):
         self.distance_to_goal = self.create_service(
             DistanceToGoal, 'DistanceToGoal', self.handle_distance_to_goal)
 
+        self.get_battery_voltage_service = self.create_service(
+            GetBatteryVoltage, 'GetBatteryVoltage', self.handle_get_battery_voltage)
+
         # Initialize the transform broadcaster
         self.br = TransformBroadcaster(self)
 
@@ -524,6 +529,10 @@ class ZuuuHAL(Node):
         response.distance = math.sqrt(
             (self.x_goal - self.x_odom)**2 +
             (self.y_goal - self.y_odom)**2)
+        return response
+
+    def handle_get_battery_voltage(self, request, response):
+        response.voltage = self.battery_voltage
         return response
 
     def check_battery(self, verbose=False):
