@@ -1,9 +1,12 @@
 ## Installation
-Clone and install our custom version of PyVESC:
-
-https://github.com/pollen-robotics/PyVESC
-
+Clone this repository
 ```
+git clone https://github.com/pollen-robotics/zuuu_follow_me.git
+```
+
+Clone and install **our custom version of PyVESC**:
+```
+git clone https://github.com/pollen-robotics/PyVESC.git
 pip3 install -e PyVESC/
 ```
 
