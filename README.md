@@ -16,6 +16,15 @@ sudo apt install ros-foxy-tf-transformations
 pip3 install transforms3d
 ```
 
+## Dependencies
+* zuuu_interfaces: defines custom services for the mobile base
+```
+git clone https://github.com/pollen-robotics/zuuu_interfaces
+```
+* zuuu_description: if you want to use visualization tools (e.g. rviz, gazebo)
+
+For the installation of this package, refer to the [dedicated README](https://github.com/pollen-robotics/zuuu_description).
+
 ## Usage
 ### Running the HAL
 For all ROS based use cases, the zuuu_hal must be started with :
