@@ -215,7 +215,7 @@ class MobileBase:
         self.battery_cell_warn_voltage = 3.5
         self.battery_cell_min_voltage = 3.3
         self.battery_nb_cells = 7
-        self.battery_check_period = 2
+        self.battery_check_period = 20
 
     def read_all_measurements(self):
         self.left_wheel_measurements = self.left_wheel.get_measurements()
@@ -330,8 +330,8 @@ class ZuuuHAL(Node):
                          max_i_contribution=0.0)
         self.y_pid = PID(P=3.0, I=0.00, D=0.0, max_command=0.5,
                          max_i_contribution=0.0)
-        self.theta_pid = PID(P=3.0, I=0.0, D=0.0,
-                             max_command=1.6, max_i_contribution=0.0)
+        self.theta_pid = PID(P=2.0, I=0.0, D=0.0,
+                             max_command=1.0, max_i_contribution=0.0)
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -556,9 +556,7 @@ class ZuuuHAL(Node):
                 voltage, warn_voltage, min_voltage))
             self.emergency_shutdown()
         else:
-            pass
-            self.get_logger().warning("Battery voltage OK ({}V). Warning threshold: {}V, stop threshold: {}V".format(
-                voltage, warn_voltage, min_voltage))
+            self.get_logger().warning("Battery voltage OK ({}V)".format(voltage))
 
     def emergency_shutdown(self):
         self.omnibase.back_wheel.set_duty_cycle(0)
@@ -915,11 +913,14 @@ class ZuuuHAL(Node):
             self.get_logger().warning("unknown control mode '{}'".format(self.control_mode))
 
     def position_control(self):
-        x_command = self.x_pid.tick(self.x_odom)
-        y_command = self.y_pid.tick(self.y_odom)
-        theta_command = self.theta_pid.tick(self.theta_odom, is_angle=True)
+        x_command_odom = self.x_pid.tick(self.x_odom)
+        y_command_odom = self.y_pid.tick(self.y_odom)
+        theta_command_odom = self.theta_pid.tick(self.theta_odom, is_angle=True)
 
-        return x_command, y_command, theta_command
+        x_command = x_command_odom * math.cos(-self.theta_odom) - y_command_odom * math.sin(-self.theta_odom)
+        y_command = x_command_odom * math.sin(-self.theta_odom) + y_command_odom * math.cos(-self.theta_odom)
+
+        return x_command, y_command, theta_command_odom
 
     def stop_ongoing_services(self):
         self.goto_service_on = False
