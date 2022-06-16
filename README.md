@@ -34,60 +34,6 @@ ros2 run zuuu_follow_me teleop_keyboard
 4) Using the [SetSpeed service](#setspeed-service)
 5) Using the [GoToXYTheta service](#gotoxytheta-service)
 
-### Setting the drive mode
-CMD_VEL is the default mode. Services will automatically change the drive mode as needed.
-
-CMD_VEL = The commands read on the topic /cmd_vel are applied after smoothing
-BRAKE =  Sets the PWMs to 0 effectively braking the base
-FREE_WHEEL =  Sets the current control to 0, coast mode
-SPEED =  Mode used by the set_speed service to do speed control over arbitrary duration
-GOTO =  Mode used by the go_to_xytheta service to do position control in odom frame
-EMERGENCY_STOP =  Calls the emergency_shutdown method
-
-Can be tested with CLI:
-```
-ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: CMD_VEL}" 
-ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: BRAKE}" 
-ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: FREE_WHEEL}" 
-ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: SPEED}" 
-ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: GOTO}" 
-ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: EMERGENCY_STOP}" 
-```
--> Having a terminal ready with the EMERGENCY_STOP service call is a fast way to have a software stop. After an emergency stop, just kill and relaunch the HAL, no need to restart the robot. 
-
-
-### Testing the odometry
-A visual test can be run using RViz (setting a high value to the LIDAR decay time is a visual trick to see the integral of the errors of the odometry).
-This launch file runs both the HAL, the lidar node and RViz:
-```
-ros2 launch zuuu_description zuuu_bringup.launch.py
-```
-
-Or, if the HAL is already running, then launch RViz only with:
-```
-ros2 launch zuuu_description rviz_bringup.launch.py
-```
-
-Getting the odometry in CLI:
-```
-ros2 service call /GetOdometry zuuu_interfaces/srv/GetOdometry "{}"
-```
-
-Resetting the odometry in CLI:
-```
-ros2 service call /ResetOdometry zuuu_interfaces/srv/ResetOdometry "{}"
-```
-
-### Parameters
-The parameter configuration file is in ```config/params.yaml```. 
-The node should always be run with its parameter file. 
-To avoid dangerous situations with uninitialised parameters, the node will crash if the parameter file is not present at launch time (just use the launch file and it will link it)
-
-Usage example to dynamically change the LIDAR angular limits:
-```
-ros2 param set /zuuu_hal laser_lower_angle -0.1
-```
-
 ### SetSpeed service
 Sets a constant speed for a given duration. Zuuu should make a full rotation with this call:
 ```
@@ -138,6 +84,65 @@ Fu = 2.3 Hz => Tu = 0.4348 s
 
 https://en.wikipedia.org/wiki/Ziegler%E2%80%93Nichols_method
 
+
+### Setting the drive mode
+CMD_VEL is the default mode. Services will automatically change the drive mode as needed.
+
+CMD_VEL = The commands read on the topic /cmd_vel are applied after smoothing
+
+BRAKE =  Sets the PWMs to 0 effectively braking the base
+
+FREE_WHEEL =  Sets the current control to 0, coast mode
+
+SPEED =  Mode used by the set_speed service to do speed control over arbitrary duration
+
+GOTO =  Mode used by the go_to_xytheta service to do position control in odom frame
+
+EMERGENCY_STOP =  Calls the emergency_shutdown method
+
+Can be tested with CLI:
+```
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: CMD_VEL}" 
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: BRAKE}" 
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: FREE_WHEEL}" 
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: SPEED}" 
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: GOTO}" 
+ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: EMERGENCY_STOP}" 
+```
+-> Having a terminal ready with the EMERGENCY_STOP service call is a fast way to have a software stop. After an emergency stop, just kill and relaunch the HAL, no need to restart the robot. 
+
+
+### Testing the odometry
+A visual test can be run using RViz (setting a high value to the LIDAR decay time is a visual trick to see the integral of the errors of the odometry).
+This launch file runs both the HAL, the lidar node and RViz:
+```
+ros2 launch zuuu_description zuuu_bringup.launch.py
+```
+
+Or, if the HAL is already running, then launch RViz only with:
+```
+ros2 launch zuuu_description rviz_bringup.launch.py
+```
+
+Getting the odometry in CLI:
+```
+ros2 service call /GetOdometry zuuu_interfaces/srv/GetOdometry "{}"
+```
+
+Resetting the odometry in CLI:
+```
+ros2 service call /ResetOdometry zuuu_interfaces/srv/ResetOdometry "{}"
+```
+
+### Parameters
+The parameter configuration file is in ```config/params.yaml```. 
+The node should always be run with its parameter file. 
+To avoid dangerous situations with uninitialised parameters, the node will crash if the parameter file is not present at launch time (just use the launch file and it will link it)
+
+Usage example to dynamically change the LIDAR angular limits:
+```
+ros2 param set /zuuu_hal laser_lower_angle -0.1
+```
 
 ### Follow me demo
 Old code that requires a controller to be connected. Allows for controller control or automatic "follow me" behaviour.
