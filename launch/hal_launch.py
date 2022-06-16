@@ -8,13 +8,13 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     config = os.path.join(
-        get_package_share_directory('zuuu_follow_me'),
+        get_package_share_directory('zuuu_hal'),
         'config',
         'params.yaml'
     )
 
     node = Node(
-        package='zuuu_follow_me',
+        package='zuuu_hal',
         name='zuuu_hal',
         executable='hal',
         parameters=[config]

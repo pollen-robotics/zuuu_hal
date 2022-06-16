@@ -17,18 +17,18 @@ pip3 install transforms3d
 ### Running the HAL
 For all ROS based use cases, the zuuu_hal node must be running :
 ```
-ros2 launch zuuu_follow_me hal_launch.py
+ros2 launch zuuu_hal hal_launch.py
 ```
 
 ### Sending speed commands
 Once the zuuu_hal is started, one can take control of the mobile base with:
 1) A controller
 ```
-ros2 run zuuu_follow_me teleop_joy
+ros2 run zuuu_hal teleop_joy
 ```
 2) A keyboard
 ```
-ros2 run zuuu_follow_me teleop_keyboard
+ros2 run zuuu_hal teleop_keyboard
 ```
 3) Sending speed commands on the 'cmd_vel' topic.
 4) Using the [SetSpeed service](#setspeed-service)
@@ -41,7 +41,7 @@ ros2 service call /SetSpeed zuuu_interfaces/srv/SetSpeed "{x_vel: 0.0, y_vel: 0.
 ```
 This script makes Zuuu draw a 1x1 square (front, right, back, left):
 ```
-ros2 run zuuu_follow_me set_speed_service_test
+ros2 run zuuu_hal set_speed_service_test
 ```
 
 ### GoToXYTheta service
@@ -148,7 +148,7 @@ ros2 param set /zuuu_hal laser_lower_angle -0.1
 Old code that requires a controller to be connected. Allows for controller control or automatic "follow me" behaviour.
 This demo does not require the HAL to be started, just run: 
 ```
-ros2 launch zuuu_follow_me follow_me_launch.py
+ros2 launch zuuu_hal follow_me_launch.py
 ```
 
 
