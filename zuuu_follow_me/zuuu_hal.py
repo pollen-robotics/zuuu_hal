@@ -920,10 +920,15 @@ class ZuuuHAL(Node):
     def position_control(self):
         x_command_odom = self.x_pid.tick(self.x_odom)
         y_command_odom = self.y_pid.tick(self.y_odom)
-        theta_command_odom = self.theta_pid.tick(self.theta_odom, is_angle=True)
+        theta_command_odom = self.theta_pid.tick(
+            self.theta_odom, is_angle=True)
 
-        x_command = x_command_odom * math.cos(-self.theta_odom) - y_command_odom * math.sin(-self.theta_odom)
-        y_command = x_command_odom * math.sin(-self.theta_odom) + y_command_odom * math.cos(-self.theta_odom)
+        x_command = x_command_odom * \
+            math.cos(-self.theta_odom) - y_command_odom * \
+            math.sin(-self.theta_odom)
+        y_command = x_command_odom * \
+            math.sin(-self.theta_odom) + y_command_odom * \
+            math.cos(-self.theta_odom)
 
         return x_command, y_command, theta_command_odom
 
