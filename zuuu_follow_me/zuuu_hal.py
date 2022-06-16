@@ -17,7 +17,7 @@ from rclpy.constants import S_TO_NS
 from collections import deque
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
-from zuuu_interfaces.srv import SetZuuuMode, GetOdometry, ResetOdometry
+from zuuu_interfaces.srv import SetZuuuMode, GetZuuuMode, GetOdometry, ResetOdometry
 from zuuu_interfaces.srv import GoToXYTheta, IsGoToFinished, DistanceToGoal
 from zuuu_interfaces.srv import SetSpeed, GetBatteryVoltage
 from rclpy.parameter import Parameter
@@ -364,6 +364,9 @@ class ZuuuHAL(Node):
         self.mode_service = self.create_service(
             SetZuuuMode, 'SetZuuuMode', self.handle_zuuu_mode)
 
+        self.get_mode_service = self.create_service(
+            GetZuuuMode, 'GetZuuuMode', self.handle_get_zuuu_mode)
+
         self.reset_odometry_service = self.create_service(
             ResetOdometry, 'ResetOdometry', self.handle_reset_odometry)
 
@@ -476,6 +479,9 @@ class ZuuuHAL(Node):
         else:
             response.success = False
         return response
+
+    def handle_get_zuuu_mode(self, request, response):
+        response.mode = self.mode.name
 
     def handle_reset_odometry(self, request, response):
         # Resetting asynchronously to prevent race conditions.
