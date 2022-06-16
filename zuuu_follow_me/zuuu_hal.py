@@ -1,4 +1,5 @@
 import rclpy
+import rclpy.logging
 from rclpy.node import Node
 import time
 import math
@@ -552,9 +553,11 @@ class ZuuuHAL(Node):
             self.get_logger().warning("Battery voltage LOW ({}V). Consider recharging. Warning threshold: {}V, stop threshold: {}V".format(
                 voltage, warn_voltage, min_voltage))
         elif (voltage < min_voltage):
-            self.get_logger().error("Battery voltage critically LOW ({}V). Emergency shutdown! Warning threshold: {}V, stop threshold: {}V".format(
-                voltage, warn_voltage, min_voltage))
+            msg = "Battery voltage critically LOW ({}V). Emergency shutdown! Warning threshold: {}V, stop threshold: {}V".format(
+                voltage, warn_voltage, min_voltage)
+            self.get_logger().error(msg)
             self.emergency_shutdown()
+            raise RuntimeError(msg)
         else:
             pass
             self.get_logger().warning("Battery voltage OK ({}V). Warning threshold: {}V, stop threshold: {}V".format(
@@ -567,7 +570,7 @@ class ZuuuHAL(Node):
         if SAVE_CSV:
             self.csv_file.close()
         self.get_logger().warn("Emergency shutdown!")
-        sys.exit(1)
+        time.sleep(0.1)
 
     def cmd_vel_callback(self, msg):
         self.cmd_vel = msg
@@ -885,8 +888,10 @@ class ZuuuHAL(Node):
             self.get_logger().warning(
                 "Could not read any of the motor drivers. This should not happen often.")
             if (self.nb_full_com_fails > self.max_full_com_fails):
-                self.get_logger().error("Too many communication errors, emergency shutdown")
+                msg = "Too many communication errors, emergency shutdown"
+                self.get_logger().error(msg)
                 self.emergency_shutdown()
+                raise RuntimeError(msg)
             return
         # Read success
         self.nb_full_com_fails = 0
@@ -988,8 +993,10 @@ class ZuuuHAL(Node):
                 f"self.goto_service_on {self.goto_service_on}")
 
         elif self.mode is ZuuuModes.EMERGENCY_STOP:
-            self.get_logger().warning("Emergency stop requested")
+            msg = "Emergency stop requested"
+            self.get_logger().warning(msg)
             self.emergency_shutdown()
+            raise RuntimeError(msg)
 
         else:
             self.get_logger().warning("unknown mode '{}', setting it to brake".format(self.mode))
@@ -1028,12 +1035,18 @@ class ZuuuHAL(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ZuuuHAL()
+    try:
+        node = ZuuuHAL()
+    except Exception:
+        rclpy.logging._root_logger.error(traceback.format_exc())
+        rclpy.logging._root_logger.error('Failed to init ZuuuHAL')
+        rclpy.shutdown()
+        sys.exit(1)
 
     try:
         rclpy.spin(node)
-    except Exception as e:
-        traceback.print_exc()
+    except Exception:
+        rclpy.logging._root_logger.error(traceback.format_exc())
     finally:
         node.emergency_shutdown()
         node.destroy_node()
