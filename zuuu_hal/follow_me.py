@@ -38,8 +38,8 @@ class FollowMe(Node):
         self.cmd_pub = self.create_publisher(
             Twist, 'cmd_vel', 10)
 
-        self.lin_max_speed = 0.15
-        self.rot_max_speed = 0.15
+        self.lin_max_speed = 0.5
+        self.rot_max_speed = 1.2
         self.t0 = time.time()
         self.get_logger().info(
             "Follow me started.")
@@ -95,7 +95,7 @@ class FollowMe(Node):
         image_size = int(absolute_range_max * pixel_per_meter)
         height = image_size
         width = image_size
-        self.get_logger().info("Image will be {}x{}".format(width, height))
+        # self.get_logger().info("Image will be {}x{}".format(width, height))
         image = np.zeros((height, width, 3), np.uint8)
         index = -1
         center_x = width / 2
@@ -142,7 +142,8 @@ class FollowMe(Node):
             image[int(sum_y), int(sum_x)] = (255, 0, 0)  # y, x as always
             # Careful, x in image frame is -y lidar frame, and y in image frame is x in lidar frame
             avg_angle = math.atan2(sum_x - width/2, sum_y)
-            dist = math.sqrt((sum_x-center_x)**2 + (sum_y-center_y)**2)
+            # dist = math.sqrt((sum_x-center_x)**2 + (sum_y-center_y)**2)
+            dist = abs(sum_y-center_y)
             if center_y < sum_y:
                 dist *= -1
             dlin_percent = max(-1, min(1, 2*dist /
@@ -170,20 +171,21 @@ class FollowMe(Node):
                 f = 1/dt
             self.get_logger().info("Potential freq: {:.0f}Hz".format(f))
 
+        # dlin_percent, dang_percent = self.get_barycenter_offset(0.75, 2.25, math.pi/4)
         dlin_percent, dang_percent = self.get_barycenter_offset(
-            0.75, 2.25, math.pi/4)
+            0.3, 1.0, math.pi/4)
 
         lin_speed = -dlin_percent*self.lin_max_speed
         rot_speed = dang_percent*self.rot_max_speed
-        self.get_logger().info("lin_speed={}, rot_speed={}".format(
+        self.get_logger().info("lin_speed={:.2f}, rot_speed={:.2f}".format(
             lin_speed, rot_speed))
         twist = Twist()
-        twist.linear.x = 0.0  # lin_speed
+        twist.linear.x = lin_speed
         twist.linear.y = 0.0
         twist.linear.z = 0.0
         twist.angular.x = 0.0
         twist.angular.y = 0.0
-        twist.angular.z = 0.0  # rot_speed
+        twist.angular.z = rot_speed
         self.cmd_pub.publish(twist)
 
 
