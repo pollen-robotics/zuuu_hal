@@ -36,19 +36,6 @@ This node will also subscribe to /cmd_vel and write commands to the 3 motor cont
 
 """
 TODO :
-(DONE) Modify zuuu_description to be able to launch the description without Gazebo
-(DONE, PENDING TESTS) Connect the rest of the navigation stack
-(DONE) Code functions for :
-(DONE) brake()
-(DONE) free_wheel()
-(DONE) reset_odom()
-(DONE) ik_vel is WRONG, give SI version and use the linear model to go from linear speed to PWM. Don't break old code. lin model is 22.7 * PWM = wheel_rot_speed
-(DONE) do the usual fake moving average to smooth speed commands and limit the max accel with the parameter. Do this on X, Y and theta vel, not wheel speed.
-(DONE)service for set_speed(x_speed, y_speed, rot_speed, mode=open_loop, max_accel_xy=, max_accel_theta=, duration=)
-      -> will do a service with x, y, theta and duration all mandatory. The rest become ROS parameters.
-(DONE) go_to(x, y, theta)
-(DONE) PID as parameters
-
 - Read IMU (not supported by PyVesc out of the box). Hints: create a message (examples in getters.py) with "VedderCmd.COMM_GET_IMU_DATA".
 The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the file "datatypes.h" in vesc_project.
 """
@@ -61,7 +48,7 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 SAVE_CSV = False
 
 
-# utility functions
+# Utility functions
 
 def angle_diff(a, b):
     """Returns the smallest distance between 2 angles
@@ -409,6 +396,8 @@ class ZuuuHAL(Node):
         self.create_timer(self.main_tick_period, self.main_tick)
         # self.create_timer(0.1, self.main_tick)
         self.measurements_t = time.time()
+        # Checking battery once at the start, then periodically
+        self.check_battery()
         self.create_timer(self.omnibase.battery_check_period,
                           self.check_battery)
 
@@ -556,10 +545,10 @@ class ZuuuHAL(Node):
         voltage = self.battery_voltage
 
         if (min_voltage < voltage < warn_voltage):
-            self.get_logger().warning("Battery voltage LOW ({}V). Consider recharging. Warning threshold: {}V, stop threshold: {}V".format(
+            self.get_logger().warning("Battery voltage LOW ({}V). Consider recharging. Warning threshold: {:.1f}V, stop threshold: {:.1f}V".format(
                 voltage, warn_voltage, min_voltage))
         elif (voltage < min_voltage):
-            msg = "Battery voltage critically LOW ({}V). Emergency shutdown! Warning threshold: {}V, stop threshold: {}V".format(
+            msg = "Battery voltage critically LOW ({}V). Emergency shutdown! Warning threshold: {:.1f}V, stop threshold: {:.1f}V".format(
                 voltage, warn_voltage, min_voltage)
             self.get_logger().error(msg)
             self.emergency_shutdown()
@@ -867,6 +856,9 @@ class ZuuuHAL(Node):
             self.y_odom = 0.0
             self.theta_odom = 0.0
 
+            # Resetting the odometry while a GoTo is ON might be dangerous. Stopping it to make sure:
+            if self.goto_service_on:
+                self.goto_service_on = False
         self.publish_odometry_and_tf()
 
     def limit_duty_cycles(self, duty_cycles):
