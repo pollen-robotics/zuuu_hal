@@ -991,9 +991,9 @@ class ZuuuHAL(Node):
                     x_vel, y_vel, theta_vel = self.position_control()
                 self.get_logger().info(
                     f"Sending x_vel {x_vel}, y_vel {y_vel}, theta_vel {theta_vel}")
-                wheel_speeds = self.ik_vel(
-                    x_vel, y_vel, theta_vel)
-                self.send_wheel_commands(wheel_speeds)
+            wheel_speeds = self.ik_vel(
+                x_vel, y_vel, theta_vel)
+            self.send_wheel_commands(wheel_speeds)
             self.get_logger().info(
                 f"self.goto_service_on {self.goto_service_on}")
 
