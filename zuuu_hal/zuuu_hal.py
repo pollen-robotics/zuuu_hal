@@ -482,6 +482,7 @@ class ZuuuHAL(Node):
 
     def handle_get_zuuu_mode(self, request, response):
         response.mode = self.mode.name
+        return response
 
     def handle_reset_odometry(self, request, response):
         # Resetting asynchronously to prevent race conditions.
