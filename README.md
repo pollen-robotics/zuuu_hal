@@ -54,7 +54,7 @@ Sets a constant speed for a given duration. Zuuu should make a full rotation wit
 ```
 ros2 service call /SetSpeed zuuu_interfaces/srv/SetSpeed "{x_vel: 0.0, y_vel: 0.0, rot_vel: 2.0, duration: 3.1415}"
 ```
-This script makes Zuuu draw a 1x1 square (front, right, back, left):
+This script makes Zuuu draw a 1mx1m square (front, right, back, left) using the SetSpeed service:
 ```
 ros2 run zuuu_hal set_speed_service_test
 ```
@@ -89,6 +89,11 @@ ros2 param set /zuuu_hal xy_tol 0.0
 ros2 param set /zuuu_hal theta_tol 0.0
 ```
 :bulb: A good example where this setup is needed is if Zuuu needs to stay stationary on a slope.
+
+This script makes Zuuu draw a 1mx1m square (front, right, back, left) using the GoToXYTheta service:
+```
+ros2 run zuuu_hal go_to_service_test
+```
 
 
 ### Odometry
