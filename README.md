@@ -148,7 +148,7 @@ ros2 param set /zuuu_hal laser_lower_angle -0.1
 Old code that requires a controller to be connected. Allows for controller control or automatic "follow me" behaviour.
 This demo does not require the HAL to be started, just run: 
 ```
-ros2 launch zuuu_hal follow_me_launch.py
+ros2 run zuuu_hal follow_me
 ```
 
 
