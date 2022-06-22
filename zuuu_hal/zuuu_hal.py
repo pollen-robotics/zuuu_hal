@@ -312,9 +312,9 @@ class ZuuuHAL(Node):
         self.speed_service_deadline = 0
         self.speed_service_on = False
         self.goto_service_on = False
-        self.x_pid = PID(P=3.0, I=0.00, D=0.0, max_command=0.5,
+        self.x_pid = PID(P=2.0, I=0.00, D=0.0, max_command=0.5,
                          max_i_contribution=0.0)
-        self.y_pid = PID(P=3.0, I=0.00, D=0.0, max_command=0.5,
+        self.y_pid = PID(P=2.0, I=0.00, D=0.0, max_command=0.5,
                          max_i_contribution=0.0)
         self.theta_pid = PID(P=2.0, I=0.0, D=0.0,
                              max_command=1.0, max_i_contribution=0.0)
