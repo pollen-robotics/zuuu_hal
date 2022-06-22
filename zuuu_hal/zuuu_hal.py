@@ -321,7 +321,7 @@ class ZuuuHAL(Node):
 
         self.max_wheel_speed = self.pwm_to_wheel_rot_speed(self.max_duty_cyle)
         self.get_logger().info(
-            f"The maximum PWM value is {self.max_duty_cyle*100}% => maximum wheel speed is set to {self.max_wheel_speed }rad/s")
+            f"The maximum PWM value is {self.max_duty_cyle*100}% => maximum wheel speed is set to {self.max_wheel_speed:.2f}rad/s")
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -957,6 +957,10 @@ class ZuuuHAL(Node):
         # Actually sending the commands
         if verbose:
             self.get_logger().info("cycles : {}".format(duty_cycles))
+
+        # if self.omnibase.back_wheel_measurements is not None:
+        #     self.get_logger().info("speed {:.2f}".format(
+        #         self.omnibase.back_wheel_measurements.rpm*2*math.pi/(60*self.omnibase.half_poles)))
 
         if self.mode is ZuuuModes.CMD_VEL:
             # If too much time without an order, the speeds are smoothed back to 0 for safety.
