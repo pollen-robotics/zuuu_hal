@@ -241,6 +241,7 @@ class ZuuuHAL(Node):
                 ('theta_tol', None),
                 ('smoothing_factor', None),
                 ('safety_distance', None),
+                ('critical_distance', None),
             ])
         self.add_on_set_parameters_callback(self.parameters_callback)
 
@@ -290,6 +291,9 @@ class ZuuuHAL(Node):
         self.safety_distance = self.get_parameter(
             'safety_distance').get_parameter_value().double_value
 
+        self.critical_distance = self.get_parameter(
+            'critical_distance').get_parameter_value().double_value
+
         self.cmd_vel = None
         self.x_odom = 0.0
         self.y_odom = 0.0
@@ -315,6 +319,10 @@ class ZuuuHAL(Node):
         self.speed_service_deadline = 0
         self.speed_service_on = False
         self.goto_service_on = False
+        self.safety_on = True
+        self.safety_is_active = False
+        self.critical_safety_is_active = False
+
         self.x_pid = PID(P=2.0, I=0.00, D=0.0, max_command=0.5,
                          max_i_contribution=0.0)
         self.y_pid = PID(P=2.0, I=0.00, D=0.0, max_command=0.5,
@@ -454,6 +462,11 @@ class ZuuuHAL(Node):
                     if param.value >= 0.0:
                         self.safety_distance = param.value
                         success = True
+                elif param.name == "critical_distance":
+                    if param.value >= 0.0:
+                        self.critical_distance = param.value
+                        success = True
+
             elif param.type_ is Parameter.Type.STRING:
                 if param.name == "control_mode":
                     if param.value in [m.name for m in ZuuuControlModes]:
@@ -542,7 +555,7 @@ class ZuuuHAL(Node):
     def handle_zuuu_set_safety(self, request, response):
         safety_on = request.safety_on
         state = 'ON' if safety_on else 'OFF'
-        self.get_logger().info("Lidar safety is now {state}")
+        self.get_logger().info(f"Lidar safety is now {state}")
         self.safety_on = safety_on
         response.success = True
         return response
@@ -596,6 +609,7 @@ class ZuuuHAL(Node):
         ranges = []
         intensities = []
         obstacle_too_close = False
+        obstacle_way_too_close = False
         for i, r in enumerate(msg.ranges):
             angle = msg.angle_min + i*msg.angle_increment
             if angle > self.laser_upper_angle or angle < self.laser_lower_angle:
@@ -604,22 +618,34 @@ class ZuuuHAL(Node):
             else:
                 ranges.append(r)
                 intensities.append(msg.intensities[i])
-                if not obstacle_too_close:
-                    obstacle_too_close = self.is_point_too_close(r, angle)
-        self.get_logger().warning(
-            obstacle_too_close)
+                if self.safety_on:
+                    dist = self.dist_to_point(r, angle)
+                    if dist < self.critical_distance:
+                        obstacle_way_too_close = True
+                        self.critical_safety_is_active = True
+                        self.safety_is_active = True
+                        obstacle_too_close = True
+                    elif dist < self.safety_distance:
+                        self.safety_is_active = True
+                        obstacle_too_close = True
+
+        if self.safety_on:
+            if obstacle_way_too_close is False:
+                self.critical_safety_is_active = False
+            if obstacle_too_close is False:
+                self.safety_is_active = False
 
         filtered_scan.ranges = ranges
         filtered_scan.intensities = intensities
         self.scan_pub.publish(filtered_scan)
 
-    def is_point_too_close(self, r, angle):
+    def dist_to_point(self, r, angle):
         x = r*math.cos(angle)
         y = r*math.sin(angle)
         # Not using the TF transforms because this is faster
-        x = x - 0.155
+        x = x + 0.155
         dist = x**2 + y**2
-        return dist < self.safety_distance
+        return dist
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot):
         """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
@@ -902,20 +928,37 @@ class ZuuuHAL(Node):
 
     def limit_duty_cycles(self, duty_cycles):
         # Between +- max_duty_cyle
+        safety_coeff = 1.0
+        if self.critical_safety_is_active:
+            safety_coeff = 0.3
+        elif self.safety_is_active:
+            safety_coeff = 0.5
+        # self.get_logger().warning(
+        #     f"safety_coeff:{safety_coeff}")
+
         for i in range(len(duty_cycles)):
             if duty_cycles[i] < 0:
-                duty_cycles[i] = max(-self.max_duty_cyle, duty_cycles[i])
+                duty_cycles[i] = max(-self.max_duty_cyle *
+                                     safety_coeff, duty_cycles[i])
             else:
-                duty_cycles[i] = min(self.max_duty_cyle, duty_cycles[i])
+                duty_cycles[i] = min(self.max_duty_cyle *
+                                     safety_coeff, duty_cycles[i])
         return duty_cycles
 
     def limit_wheel_speeds(self, wheel_speeds):
         # Between +- max_wheel_speed
+        safety_coeff = 1.0
+        if self.critical_safety_is_active:
+            safety_coeff = 0.1
+        elif self.safety_is_active:
+            safety_coeff = 0.5
         for i in range(len(wheel_speeds)):
             if wheel_speeds[i] < 0:
-                wheel_speeds[i] = max(-self.max_wheel_speed, wheel_speeds[i])
+                wheel_speeds[i] = max(-self.max_wheel_speed *
+                                      safety_coeff, wheel_speeds[i])
             else:
-                wheel_speeds[i] = min(self.max_wheel_speed, wheel_speeds[i])
+                wheel_speeds[i] = min(
+                    self.max_wheel_speed*safety_coeff, wheel_speeds[i])
         return wheel_speeds
 
     def read_measurements(self):
