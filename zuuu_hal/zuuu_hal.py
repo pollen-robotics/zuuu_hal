@@ -319,6 +319,10 @@ class ZuuuHAL(Node):
         self.theta_pid = PID(P=2.0, I=0.0, D=0.0,
                              max_command=1.0, max_i_contribution=0.0)
 
+        self.max_wheel_speed = self.pwm_to_wheel_rot_speed(self.max_duty_cyle)
+        self.get_logger().info(
+            f"The maximum PWM value is {self.max_duty_cyle*100}% => maximum wheel speed is set to {self.max_wheel_speed }rad/s")
+
         self.cmd_vel_sub = self.create_subscription(
             Twist,
             'cmd_vel',
@@ -604,6 +608,17 @@ class ZuuuHAL(Node):
 
         return pwm
 
+    def pwm_to_wheel_rot_speed(self, pwm):
+        """Uses a simple affine model to map a pwm to the expected rotational speed of the wheel (based on measures made on a full Reachy Mobile)
+        """
+        # Creating an arteficial null zone to avoid undesired behaviours for very small rot speeds
+        if abs(pwm) < 0.0126:
+            rot = 0.0
+        else:
+            rot = sign(pwm)*(abs(pwm)-0.0126)/0.0418
+
+        return rot
+
     def ik_vel_to_pwm(self, x_vel, y_vel, rot_vel):
         rot_vels = self.ik_vel(x_vel, y_vel, rot_vel)
         return [self.wheel_rot_speed_to_pwm(rot_vel) for rot_vel in rot_vels]
@@ -862,6 +877,15 @@ class ZuuuHAL(Node):
                 duty_cycles[i] = min(self.max_duty_cyle, duty_cycles[i])
         return duty_cycles
 
+    def limit_wheel_speeds(self, wheel_speeds):
+        # Between +- max_wheel_speed
+        for i in range(len(wheel_speeds)):
+            if wheel_speeds[i] < 0:
+                wheel_speeds[i] = max(-self.max_wheel_speed, wheel_speeds[i])
+            else:
+                wheel_speeds[i] = min(self.max_wheel_speed, wheel_speeds[i])
+        return wheel_speeds
+
     def read_measurements(self):
         self.omnibase.read_all_measurements()
         if self.omnibase.back_wheel_measurements is not None:
@@ -898,6 +922,7 @@ class ZuuuHAL(Node):
                 duty_cycles[1])
         elif self.control_mode is ZuuuControlModes.PID:
             # rad/s to rpm to erpm
+            wheel_speeds = self.limit_wheel_speeds(wheel_speeds)
             self.omnibase.back_wheel.set_rpm(
                 int(self.omnibase.half_poles*wheel_speeds[0]*30/math.pi))
             self.omnibase.left_wheel.set_rpm(
