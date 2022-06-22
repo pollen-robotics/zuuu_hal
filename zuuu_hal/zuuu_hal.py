@@ -227,6 +227,11 @@ class ZuuuHAL(Node):
             self.csv_writer.writerow(
                 ["Time (s)", "PWM (%)", "Wheel speed (rad/s)", "zuuu rot speed (rad/s)"])
         self.get_logger().info("Starting zuuu_hal!")
+        self.omnibase = MobileBase()
+        self.get_logger().info(
+            "Reading Zuuu's sensors once...")
+        self.read_measurements()
+
         self.declare_parameters(
             namespace='',
             parameters=[
@@ -379,19 +384,14 @@ class ZuuuHAL(Node):
         # Initialize the transform broadcaster
         self.br = TransformBroadcaster(self)
 
-        self.omnibase = MobileBase()
-
         self.old_measure_timestamp = self.get_clock().now()
         self.measure_timestamp = self.get_clock().now()
         # *sigh* if needed use: https://github.com/ros2/rclpy/blob/master/rclpy/test/test_time.py
         self.cmd_vel_t0 = time.time()
         self.t0 = time.time()
-        self.get_logger().info(
-            "Reading Zuuu's sensors once...")
         self.read_measurements()
         self.get_logger().info(
             "zuuu_hal started, you can write to cmd_vel to move the robot")
-        self.get_logger().info("List of published topics: TODO")
 
         self.create_timer(self.main_tick_period, self.main_tick)
         # self.create_timer(0.1, self.main_tick)
