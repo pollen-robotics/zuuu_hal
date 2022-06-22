@@ -19,7 +19,7 @@ from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
 from zuuu_interfaces.srv import SetZuuuMode, GetZuuuMode, GetOdometry, ResetOdometry
 from zuuu_interfaces.srv import GoToXYTheta, IsGoToFinished, DistanceToGoal
-from zuuu_interfaces.srv import SetSpeed, GetBatteryVoltage
+from zuuu_interfaces.srv import SetSpeed, GetBatteryVoltage, SetZuuuSafety
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import SetParametersResult
 from csv import writer
@@ -240,6 +240,7 @@ class ZuuuHAL(Node):
                 ('xy_tol', None),
                 ('theta_tol', None),
                 ('smoothing_factor', None),
+                ('safety_distance', None),
             ])
         self.add_on_set_parameters_callback(self.parameters_callback)
 
@@ -286,6 +287,8 @@ class ZuuuHAL(Node):
             'theta_tol').get_parameter_value().double_value  # 0.17
         self.smoothing_factor = self.get_parameter(
             'smoothing_factor').get_parameter_value().double_value  # 100.0
+        self.safety_distance = self.get_parameter(
+            'safety_distance').get_parameter_value().double_value
 
         self.cmd_vel = None
         self.x_odom = 0.0
@@ -378,6 +381,9 @@ class ZuuuHAL(Node):
         self.get_battery_voltage_service = self.create_service(
             GetBatteryVoltage, 'GetBatteryVoltage', self.handle_get_battery_voltage)
 
+        self.set_safety_service = self.create_service(
+            SetZuuuSafety, 'SetZuuuSafety', self.handle_zuuu_set_safety)
+
         # Initialize the transform broadcaster
         self.br = TransformBroadcaster(self)
 
@@ -443,6 +449,10 @@ class ZuuuHAL(Node):
                 elif param.name == "smoothing_factor":
                     if param.value >= 0.0:
                         self.smoothing_factor = param.value
+                        success = True
+                elif param.name == "safety_distance":
+                    if param.value >= 0.0:
+                        self.safety_distance = param.value
                         success = True
             elif param.type_ is Parameter.Type.STRING:
                 if param.name == "control_mode":
@@ -529,6 +539,14 @@ class ZuuuHAL(Node):
         response.voltage = self.battery_voltage
         return response
 
+    def handle_zuuu_set_safety(self, request, response):
+        safety_on = request.safety_on
+        state = 'ON' if safety_on else 'OFF'
+        self.get_logger().info("Lidar safety is now {state}")
+        self.safety_on = safety_on
+        response.success = True
+        return response
+
     def check_battery(self, verbose=False):
         t = time.time()
         if verbose:
@@ -577,6 +595,7 @@ class ZuuuHAL(Node):
         filtered_scan.range_max = msg.range_max
         ranges = []
         intensities = []
+        obstacle_too_close = False
         for i, r in enumerate(msg.ranges):
             angle = msg.angle_min + i*msg.angle_increment
             if angle > self.laser_upper_angle or angle < self.laser_lower_angle:
@@ -585,9 +604,22 @@ class ZuuuHAL(Node):
             else:
                 ranges.append(r)
                 intensities.append(msg.intensities[i])
+                if not obstacle_too_close:
+                    obstacle_too_close = self.is_point_too_close(r, angle)
+        self.get_logger().warning(
+            obstacle_too_close)
+
         filtered_scan.ranges = ranges
         filtered_scan.intensities = intensities
         self.scan_pub.publish(filtered_scan)
+
+    def is_point_too_close(self, r, angle):
+        x = r*math.cos(angle)
+        y = r*math.sin(angle)
+        # Not using the TF transforms because this is faster
+        x = x - 0.155
+        dist = x**2 + y**2
+        return dist < self.safety_distance
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot):
         """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
