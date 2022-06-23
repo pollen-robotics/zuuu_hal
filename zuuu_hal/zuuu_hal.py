@@ -610,6 +610,9 @@ class ZuuuHAL(Node):
         intensities = []
         obstacle_too_close = False
         obstacle_way_too_close = False
+        min_dist = 10000.0
+        min_angle = 1000.0
+
         for i, r in enumerate(msg.ranges):
             angle = msg.angle_min + i*msg.angle_increment
             if angle > self.laser_upper_angle or angle < self.laser_lower_angle:
@@ -620,6 +623,9 @@ class ZuuuHAL(Node):
                 intensities.append(msg.intensities[i])
                 if self.safety_on:
                     dist = self.dist_to_point(r, angle)
+                    if dist < min_dist:
+                        min_dist = dist
+                        min_angle = angle
                     if dist < self.critical_distance:
                         obstacle_way_too_close = True
                         self.critical_safety_is_active = True
@@ -638,13 +644,15 @@ class ZuuuHAL(Node):
         filtered_scan.ranges = ranges
         filtered_scan.intensities = intensities
         self.scan_pub.publish(filtered_scan)
+        # self.get_logger().warn(
+        #     f"Min dist={min_dist*100:.1f}cm @angle {min_angle*180/math.pi:.1f}")
 
     def dist_to_point(self, r, angle):
         x = r*math.cos(angle)
         y = r*math.sin(angle)
         # Not using the TF transforms because this is faster
         x = x + 0.155
-        dist = x**2 + y**2
+        dist = math.sqrt(x**2 + y**2)
         return dist
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot):

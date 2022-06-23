@@ -12,5 +12,5 @@ zuuu_hal:
     xy_tol: 0.0
     theta_tol: 0.0
     smoothing_factor: 5.0
-    safety_distance: 0.4 # distance from the center of the robot
-    critical_distance: 0.1 # distance from the center of the robot
+    safety_distance: 0.5 # distance from the center of the robot
+    critical_distance: 0.35 # distance from the center of the robot
