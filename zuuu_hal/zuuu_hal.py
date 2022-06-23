@@ -980,8 +980,8 @@ class ZuuuHAL(Node):
         else:
             # Decidemment ! Keeping last valid measure...
             self.nb_full_com_fails += 1
-            self.get_logger().warning(
-                "Could not read any of the motor drivers. This should not happen often.")
+            # self.get_logger().warning(
+            #     "Could not read any of the motor drivers. This should not happen often.")
             if (self.nb_full_com_fails > self.max_full_com_fails):
                 msg = "Too many communication errors, emergency shutdown"
                 self.get_logger().error(msg)
