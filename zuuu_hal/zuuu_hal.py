@@ -201,7 +201,7 @@ class MobileBase:
         self.battery_cell_warn_voltage = 3.5
         self.battery_cell_min_voltage = 3.3
         self.battery_nb_cells = 7
-        self.battery_check_period = 20
+        self.battery_check_period = 60
 
     def read_all_measurements(self):
         self.left_wheel_measurements = self.left_wheel.get_measurements()
