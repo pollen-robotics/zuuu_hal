@@ -110,15 +110,18 @@ ros2 service call /ResetOdometry zuuu_interfaces/srv/ResetOdometry "{}"
 
 
 :bulb: A visual test can be run using RViz. Setting a high value to the LIDAR decay time is a trick to visualize the errors of the odometry.
-
-This launch file runs both the HAL, the lidar node and RViz:
+Run the HAL:
 ```
-ros2 launch zuuu_description zuuu_bringup.launch.py
+ros2 launch zuuu_hal hal.launch.py
 ```
-
-Or, if the HAL is already running, then launch RViz only with:
+Then launch RViz with:
 ```
 ros2 launch zuuu_description rviz_bringup.launch.py
+```
+
+Alternatively, this launch file runs both the HAL, the lidar node, RViz and Zuuu's robot description from the URDF:
+```
+ros2 launch zuuu_description zuuu_bringup.launch.py
 ```
 
 
@@ -166,9 +169,9 @@ ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: EMERGENCY
 In this demo, Zuuu will follow anything that is in front of it using its LIDAR as the only sensor. This is only an usage example, as a robust follow me behaviour would require a more sophisticated approach.
 By default you need to be between 30cm and 100cm to be detected. To change the default values, tweak range_min, range_max and detection_angle.
 
-Start the HAL and the LIDAR:
+Start the HAL:
 ```
-ros2 launch zuuu_description zuuu_bringup_no_rviz.launch.py
+ros2 launch zuuu_hal hal.launch.py
 ```
 And start the follow me node:
 ```
