@@ -30,7 +30,6 @@ setup(
             'hal = zuuu_hal.zuuu_hal:main',
             'teleop_keyboard = zuuu_hal.zuuu_teleop_keyboard:main',
             'teleop_joy = zuuu_hal.zuuu_teleop_joy:main',
-            'laser_filter = zuuu_hal.laser_filter:main',
             'speed_calibration = zuuu_hal.zuuu_speed_calibration:main',
             'set_speed_service_test = zuuu_hal.set_speed_service_test:main',
             'go_to_service_test = zuuu_hal.go_to_service_test:main',
