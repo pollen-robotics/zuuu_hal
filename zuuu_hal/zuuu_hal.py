@@ -228,7 +228,7 @@ class ZuuuHAL(Node):
         self.goto_service_on = False
         self.safety_on = True
         self.lidar_safety = LidarSafety(
-            self.safety_distance, self.critical_distance, robot_collision_radius=0.55, speed_reduction_factor=0.5, logger=self.get_logger())
+            self.safety_distance, self.critical_distance, robot_collision_radius=0.55, speed_reduction_factor=0.8, logger=self.get_logger())
 
         self.x_pid = PID(P=2.0, I=0.00, D=0.0, max_command=0.5,
                          max_i_contribution=0.0)
@@ -626,15 +626,15 @@ class ZuuuHAL(Node):
         return [x_vel, y_vel, theta_vel]
 
     def filter_speed_goals(self):
-        self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered = self.lidar_safety.safety_check_speed_command(
-            self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
-
         self.x_vel_goal_filtered = (self.x_vel_goal +
                                     self.smoothing_factor*self.x_vel_goal_filtered)/(1+self.smoothing_factor)
         self.y_vel_goal_filtered = (self.y_vel_goal +
                                     self.smoothing_factor*self.y_vel_goal_filtered)/(1+self.smoothing_factor)
         self.theta_vel_goal_filtered = (self.theta_vel_goal +
                                         self.smoothing_factor*self.theta_vel_goal_filtered)/(1+self.smoothing_factor)
+
+        self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered = self.lidar_safety.safety_check_speed_command(
+            self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
 
     def format_measurements(self, measurements):
         if measurements is None:
