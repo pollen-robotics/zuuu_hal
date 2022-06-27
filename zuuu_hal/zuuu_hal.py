@@ -228,7 +228,7 @@ class ZuuuHAL(Node):
         self.goto_service_on = False
         self.safety_on = True
         self.lidar_safety = LidarSafety(
-            self.safety_distance, self.critical_distance, robot_collision_radius=0.55, speed_reduction_factor=0.5)
+            self.safety_distance, self.critical_distance, robot_collision_radius=0.55, speed_reduction_factor=0.5, logger=self.get_logger())
 
         self.x_pid = PID(P=2.0, I=0.00, D=0.0, max_command=0.5,
                          max_i_contribution=0.0)
@@ -832,7 +832,7 @@ class ZuuuHAL(Node):
                 wheel_speeds[i] = max(-self.max_wheel_speed, wheel_speeds[i])
             else:
                 wheel_speeds[i] = min(
-                    self.max_wheel_speed wheel_speeds[i])
+                    self.max_wheel_speed, wheel_speeds[i])
         return wheel_speeds
 
     def read_measurements(self):

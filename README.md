@@ -32,7 +32,7 @@ For the installation of this package, refer to the [dedicated README](https://gi
 ### Running the HAL
 For all ROS based use cases, the zuuu_hal node must be running :
 ```
-ros2 launch zuuu_hal hal_launch.py
+ros2 launch zuuu_hal hal.launch.py
 ```
 
 ### Sending speed commands
@@ -130,7 +130,7 @@ Usage example to dynamically change the LIDAR angular limits:
 ros2 param set /zuuu_hal laser_lower_angle -0.1
 ```
 
-:warning: The node should always be run with its parameter file. The node will crash if the parameter file is not present at launch time (use the ```hal_launch.py``` launch file and it should work fine)
+:warning: The node should always be run with its parameter file. The node will crash if the parameter file is not present at launch time (use the ```hal.launch.py``` launch file and it should work fine)
 
 ### Setting the drive mode
 CMD_VEL is the default mode. Services will automatically change the drive mode as needed. 

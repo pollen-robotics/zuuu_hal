@@ -1,9 +1,16 @@
 import math
 from zuuu_hal.utils import angle_diff
 
+"""
+TODO
+[rplidar_scan_publisher-1] [WARN] [1656351979.817559703] [rplidar_scan_publisher]: 
+New subscription discovered on this topic, requesting incompatible QoS. 
+No messages will be sent to it. Last incompatible policy: RELIABILITY_QOS_POLICY
+"""
+
 
 class LidarSafety:
-    def __init__(self, safety_distance, critical_distance, robot_collision_radius, speed_reduction_factor):
+    def __init__(self, safety_distance, critical_distance, robot_collision_radius, speed_reduction_factor, logger):
         """Utility class to reduce Zuuu's speed when too close to obstacles seen by the LIDAR.
         Functional behaviour:
         - safety_distance >= critical_distance
@@ -20,6 +27,7 @@ class LidarSafety:
         self.unsafe_angles = []
         self.critical_angles = []
         self.at_least_one_critical = False
+        self.logger = logger
 
     def clear_measures(self):
         self.unsafe_angles = []
