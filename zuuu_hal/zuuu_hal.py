@@ -227,6 +227,8 @@ class ZuuuHAL(Node):
         self.speed_service_on = False
         self.goto_service_on = False
         self.safety_on = True
+        self.scan_is_read = False
+        self.scan_timeout = 0.5
         self.lidar_safety = LidarSafety(
             self.safety_distance, self.critical_distance, robot_collision_radius=0.55, speed_reduction_factor=0.8, logger=self.get_logger())
 
@@ -305,10 +307,11 @@ class ZuuuHAL(Node):
         self.measure_timestamp = self.get_clock().now()
         # *sigh* if needed use: https://github.com/ros2/rclpy/blob/master/rclpy/test/test_time.py
         self.cmd_vel_t0 = time.time()
+        self.scan_t0 = time.time()
         self.t0 = time.time()
         self.read_measurements()
         self.get_logger().info(
-            "zuuu_hal started, you can write to cmd_vel to move the robot")
+            "zuuu_hal started, you can write to cmd_vel to move the robot!")
 
         self.create_timer(self.main_tick_period, self.main_tick)
         # self.create_timer(0.1, self.main_tick)
@@ -503,6 +506,8 @@ class ZuuuHAL(Node):
         self.cmd_vel_t0 = time.time()
 
     def scan_filter_callback(self, msg):
+        self.scan_is_read = True
+        self.scan_t0 = time.time()
         # LIDAR angle filter managemnt
         # Temporary fix since https://github.com/ros-perception/laser_filters doesn't work on Foxy at the moment
         filtered_scan = LaserScan()
@@ -901,16 +906,15 @@ class ZuuuHAL(Node):
         self.speed_service_on = False
 
     def main_tick(self, verbose=False):
-        duty_cycles = [0, 0, 0]
         t = time.time()
-        # Actually sending the commands
-        if verbose:
-            self.get_logger().info("cycles : {}".format(duty_cycles))
-
-        # if self.omnibase.back_wheel_measurements is not None:
-        #     self.get_logger().info("speed {:.2f}".format(
-        #         self.omnibase.back_wheel_measurements.rpm*2*math.pi/(60*self.omnibase.half_poles)))
-
+        if (not self.scan_is_read) or ((t - self.scan_t0) > self.scan_timeout):
+            # If too much time without a LIDAR scan, the speeds are set to 0 for safety.
+            self.get_logger().warning(
+                "waiting for a LIDAR scan to be read. Discarding all commands...")
+            wheel_speeds = self.ik_vel(0.0, 0.0, 0.0)
+            self.send_wheel_commands(wheel_speeds)
+            time.sleep(0.5)
+            return
         if self.mode is ZuuuModes.CMD_VEL:
             # If too much time without an order, the speeds are smoothed back to 0 for safety.
             if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
