@@ -313,8 +313,7 @@ class ZuuuHAL(Node):
         self.scan_t0 = time.time()
         self.t0 = time.time()
         self.read_measurements()
-        self.get_logger().info(
-            "zuuu_hal started, you can write to cmd_vel to move the robot!")
+        self.first_tick = True
 
         self.create_timer(self.main_tick_period, self.main_tick)
         # self.create_timer(0.1, self.main_tick)
@@ -542,7 +541,6 @@ class ZuuuHAL(Node):
         if self.safety_on:
             critical_scan = self.lidar_safety.process_scan(filtered_scan)
             self.scan_critical_pub.publish(critical_scan)
-
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot):
         """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
@@ -920,6 +918,10 @@ class ZuuuHAL(Node):
             self.send_wheel_commands(wheel_speeds)
             time.sleep(0.5)
             return
+        if self.first_tick:
+            self.first_tick = False
+            self.get_logger().info("=> Zuuu HAL up and running! **")
+
         if self.mode is ZuuuModes.CMD_VEL:
             # If too much time without an order, the speeds are smoothed back to 0 for safety.
             if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
