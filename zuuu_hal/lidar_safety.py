@@ -51,15 +51,16 @@ class LidarSafety:
         critical_scan.range_max = msg.range_max
         ranges = []
         intensities = []
-        nb_critical=0
+        nb_critical = 0
         for i, r in enumerate(msg.ranges):
             angle = msg.angle_min + i*msg.angle_increment
             ranges.append(0.0)
             intensities.append(0.0)
             if r < 0.01:
                 # Code value for "no detection". e.g. the lidar filter that filters self collisions
-                # Adding an unsafe angle to avoid going fast where we're blind (TODO on new Reachy Mobile)
-                self.unsafe_angles.append(self.create_forbidden_angles(angle, 0.25))
+                # Adding an unsafe angle to avoid going fast where we're blind
+                self.unsafe_angles.append(
+                    self.create_forbidden_angles(angle, 0.25))
                 continue
             dist = self.dist_to_point(r, angle)
             if dist < self.critical_distance and (msg.intensities[i] > 0.1):
@@ -68,52 +69,42 @@ class LidarSafety:
                     self.create_forbidden_angles(angle, dist))
                 ranges[-1] = r
                 intensities[-1] = msg.intensities[i]
-                nb_critical+=1
-                # self.logger.info(f"$$$ critacal angle:{angle}")
-            elif dist < self.safety_distance:
+                nb_critical += 1
+            elif dist < self.safety_distance and (msg.intensities[i] > 0.1):
                 self.unsafe_angles.append(
                     self.create_forbidden_angles(angle, dist))
         critical_scan.ranges = ranges
         critical_scan.intensities = intensities
-        # self.logger.info(f"############ critical points:{nb_critical}")
 
         return critical_scan
 
     def safety_check_speed_command(self, x_vel, y_vel, theta_vel):
         if len(self.unsafe_angles) == 0 and len(self.critical_angles) == 0:
-            # self.logger.info(
-            #     "There are no close obstacles, the speed commands are left untouched")
+            # There are no close obstacles, the speed commands are left untouched
             return x_vel, y_vel, theta_vel
         elif len(self.critical_angles) > 0:
-            # self.logger.info("Zuuu is very close to an obstacle.")
-            # self.logger.info(f"len(self.critical_angles):{len(self.critical_angles):.1f}")
+            # Zuuu is very close to an obstacle
             if x_vel == 0.0 and y_vel == 0.0:
-                # self.logger.info("A pure rotation is OK but still slowed down")
+                # A pure rotation is OK but still slowed down
                 return 0.0, 0.0, theta_vel*self.speed_reduction_factor
             direction = math.atan2(y_vel, x_vel)
-            # self.logger.info(f"direction:{direction:.1f}")
             for pair in self.critical_angles:
                 if abs(angle_diff(pair[0], direction)) < pair[1]:
-                    # self.logger.info(
-                    #     "If the direction matches a critical angle, the speed is 0 in x and y")
-                    # self.logger.info(f"direction:{direction:.1f}, pair[0]:{pair[0]:.1f}, angle_diff:{angle_diff(pair[0], direction):.1f}, beta:{pair[1]:.1f}")
+                    # If the direction matches a critical angle, the speed is 0 in x and y
                     return 0.0, 0.0, theta_vel*self.speed_reduction_factor
-            # self.logger.info(
-            #     "The direction does not match a critical angle but the speed is still limited")
+            # The direction does not match a critical angle but the speed is still limited
             return x_vel*self.speed_reduction_factor, y_vel*self.speed_reduction_factor, theta_vel*self.speed_reduction_factor
         else:
-            # self.logger.info("Zuuu is moderately close to an obstacle.")
+            # Zuuu is moderately close to an obstacle."
             if x_vel == 0.0 and y_vel == 0.0:
-                # self.logger.info("A pure rotation is OK")
+                # A pure rotation is OK
                 return 0.0, 0.0, theta_vel
             direction = math.atan2(y_vel, x_vel)
             for pair in self.unsafe_angles:
                 if abs(angle_diff(pair[0], direction)) < pair[1]:
-                    # self.logger.info(
-                    #     "If the direction matches an unsafe angle, the speed is reduced")
+                    # If the direction matches an unsafe angle, the speed is reduced
                     return x_vel*self.speed_reduction_factor, y_vel*self.speed_reduction_factor, theta_vel
-            # self.logger.info(
-            #     "The direction does not match an unsafe angle, the speed commands are left untouched")
+            # The direction does not match an unsafe angle, the speed commands are left untouched
             return x_vel, y_vel, theta_vel
 
     def dist_to_point(self, r, angle):
