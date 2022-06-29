@@ -32,7 +32,7 @@ For the installation of this package, refer to the [dedicated README](https://gi
 ### Running the HAL
 For all ROS based use cases, the zuuu_hal node must be running :
 ```
-ros2 launch zuuu_hal hal_launch.py
+ros2 launch zuuu_hal hal.launch.py
 ```
 
 ### Sending speed commands
@@ -110,15 +110,18 @@ ros2 service call /ResetOdometry zuuu_interfaces/srv/ResetOdometry "{}"
 
 
 :bulb: A visual test can be run using RViz. Setting a high value to the LIDAR decay time is a trick to visualize the errors of the odometry.
-
-This launch file runs both the HAL, the lidar node and RViz:
+Run the HAL:
 ```
-ros2 launch zuuu_description zuuu_bringup.launch.py
+ros2 launch zuuu_hal hal.launch.py
 ```
-
-Or, if the HAL is already running, then launch RViz only with:
+Then launch RViz with:
 ```
 ros2 launch zuuu_description rviz_bringup.launch.py
+```
+
+Alternatively, this launch file runs both the HAL, the lidar node, RViz and Zuuu's robot description from the URDF:
+```
+ros2 launch zuuu_description zuuu_bringup.launch.py
 ```
 
 
@@ -130,7 +133,7 @@ Usage example to dynamically change the LIDAR angular limits:
 ros2 param set /zuuu_hal laser_lower_angle -0.1
 ```
 
-:warning: The node should always be run with its parameter file. The node will crash if the parameter file is not present at launch time (use the ```hal_launch.py``` launch file and it should work fine)
+:warning: The node should always be run with its parameter file. The node will crash if the parameter file is not present at launch time (use the ```hal.launch.py``` launch file and it should work fine)
 
 ### Setting the drive mode
 CMD_VEL is the default mode. Services will automatically change the drive mode as needed. 
@@ -166,9 +169,9 @@ ros2 service call /SetZuuuMode zuuu_interfaces/srv/SetZuuuMode "{mode: EMERGENCY
 In this demo, Zuuu will follow anything that is in front of it using its LIDAR as the only sensor. This is only an usage example, as a robust follow me behaviour would require a more sophisticated approach.
 By default you need to be between 30cm and 100cm to be detected. To change the default values, tweak range_min, range_max and detection_angle.
 
-Start the HAL and the LIDAR:
+Start the HAL:
 ```
-ros2 launch zuuu_description zuuu_bringup_no_rviz.launch.py
+ros2 launch zuuu_hal hal.launch.py
 ```
 And start the follow me node:
 ```

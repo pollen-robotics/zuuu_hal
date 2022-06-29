@@ -1,12 +1,17 @@
-import rclpy
-import rclpy.logging
-from rclpy.node import Node
 import time
 import math
 import numpy as np
 import traceback
+import copy
 import sys
 from enum import Enum
+from collections import deque
+from csv import writer
+
+import rclpy
+import rclpy.logging
+from rclpy.node import Node
+import tf_transformations
 from pyvesc.VESC import MultiVESC
 from example_interfaces.msg import Float32
 from nav_msgs.msg import Odometry
@@ -14,17 +19,17 @@ from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 from rclpy.constants import S_TO_NS
-from collections import deque
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
+from rclpy.parameter import Parameter
+from rcl_interfaces.msg import SetParametersResult
+
 from zuuu_interfaces.srv import SetZuuuMode, GetZuuuMode, GetOdometry, ResetOdometry
 from zuuu_interfaces.srv import GoToXYTheta, IsGoToFinished, DistanceToGoal
 from zuuu_interfaces.srv import SetSpeed, GetBatteryVoltage, SetZuuuSafety
-from rclpy.parameter import Parameter
-from rcl_interfaces.msg import SetParametersResult
-from csv import writer
-import tf_transformations
-import copy
+
+from zuuu_hal.utils import PID, angle_diff, sign
+from zuuu_hal.lidar_safety import LidarSafety
 
 
 """
@@ -44,25 +49,6 @@ The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the 
 # 13.2 Omnidirectional Wheeled Mobile Robots
 # 13.4 Odometry
 # /!\ Our robot frame is different. Matching between their names (left) and ours (right): xb=y, yb=-x, theta=-theta, u1=uB, u2=uL, u3=uR
-
-
-# Utility functions
-
-def angle_diff(a, b):
-    """Returns the smallest distance between 2 angles
-    """
-    d = a - b
-    d = ((d + math.pi) % (2 * math.pi)) - math.pi
-    return d
-
-
-def sign(x):
-    """Returns 1 if x >= 0, -1 otherwise
-    """
-    if x >= 0:
-        return 1
-    else:
-        return -1
 
 
 class ZuuuModes(Enum):
@@ -87,85 +73,6 @@ class ZuuuControlModes(Enum):
     """Zuuu control modes"""
     OPEN_LOOP = 1
     PID = 2
-
-
-class PID:
-    def __init__(self, P=1.0, I=0.0, D=0.0, max_command=10, max_i_contribution=5):
-        """PID implementation with anti windup.
-        Keyword Arguments:
-            P {float} -- Proportional gain (default: {1.0})
-            I {float} -- Integral gain (default: {0.0})
-            D {float} -- Differential gain (default: {0.0})
-            max_command {float} -- The output command will be trimmed to +- max_command (default: {10})
-            max_i_contribution {float} -- The integral contribution will be trimmed to +- max_i_contribution (default: {5})
-        """
-        self.p = P
-        self.i = I
-        self.d = D
-        self.max_command = max_command
-        self.max_i_contribution = max_i_contribution
-        self.goal_value = 0
-        self.current_value = 0
-
-        self.prev_error = 0
-        self.i_contribution = 0
-        self.prev_t = time.time()
-
-    def set_goal(self, goal_value):
-        """Sets the goal state
-        """
-        self.goal_value = goal_value
-        # Reseting the persistent data because the goal state changed
-        self.reset()
-
-    def reset(self):
-        """Resets the integral portion, dt and the differential contribution
-        """
-        self.i_contribution = 0
-        self.prev_t = time.time()
-        self.prev_error = self.goal_value - self.current_value
-
-    def limit(self, x, limit):
-        if x > abs(limit):
-            return abs(limit)
-        elif x < -abs(limit):
-            return -abs(limit)
-        else:
-            return x
-
-    def tick(self, current_value, is_angle=False):
-        """PID calculations. If is_angle is True, then the error will be calculated as the smallest angle between the goal and the current_value
-        Arguments:
-            current_value {float} -- Current state, usually the feedback value
-
-        Returns:
-            float -- The output command
-        """
-        self.current_value = current_value
-        if is_angle:
-            error = angle_diff(self.goal_value, self.current_value)
-        else:
-            error = self.goal_value - self.current_value
-        t = time.time()
-        dt = t - self.prev_t
-        self.prev_t = t
-        delta_error = error - self.prev_error
-        self.prev_error = error
-
-        p_contribution = self.p * error
-        if dt != 0:
-            d_contribution = self.d * delta_error / dt
-        else:
-            d_contribution = 0.0
-
-        self.i_contribution = self.i_contribution + self.i * error
-        self.i_contribution = self.limit(
-            self.i_contribution, self.max_i_contribution)
-
-        self.command = p_contribution + self.i_contribution + d_contribution
-        self.command = self.limit(self.command, self.max_command)
-
-        return self.command
 
 
 class MobileBase:
@@ -320,8 +227,10 @@ class ZuuuHAL(Node):
         self.speed_service_on = False
         self.goto_service_on = False
         self.safety_on = True
-        self.safety_is_active = False
-        self.critical_safety_is_active = False
+        self.scan_is_read = False
+        self.scan_timeout = 0.5
+        self.lidar_safety = LidarSafety(
+            self.safety_distance, self.critical_distance, robot_collision_radius=0.5, speed_reduction_factor=0.88, logger=self.get_logger())
 
         self.x_pid = PID(P=2.0, I=0.00, D=0.0, max_command=0.5,
                          max_i_contribution=0.0)
@@ -341,7 +250,6 @@ class ZuuuHAL(Node):
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.cmd_vel_sub  # prevent unused variable warning... JESUS WHAT HAVE WE BECOME
 
-        # TODO Temporary fix since https://github.com/ros-perception/laser_filters doesn't work on Foxy aparently
         self.scan_sub = self.create_subscription(
             LaserScan,
             '/scan',
@@ -350,6 +258,9 @@ class ZuuuHAL(Node):
         self.scan_sub  # prevent unused variable warning... JESUS WHAT HAVE WE BECOME
         self.scan_pub = self.create_publisher(
             LaserScan, 'scan_filterd', 10)
+
+        self.scan_critical_pub = self.create_publisher(
+            LaserScan, 'scan_critical', 10)
 
         self.pub_back_wheel_rpm = self.create_publisher(
             Float32, 'back_wheel_rpm', 2)
@@ -399,10 +310,10 @@ class ZuuuHAL(Node):
         self.measure_timestamp = self.get_clock().now()
         # *sigh* if needed use: https://github.com/ros2/rclpy/blob/master/rclpy/test/test_time.py
         self.cmd_vel_t0 = time.time()
+        self.scan_t0 = time.time()
         self.t0 = time.time()
         self.read_measurements()
-        self.get_logger().info(
-            "zuuu_hal started, you can write to cmd_vel to move the robot")
+        self.first_tick = True
 
         self.create_timer(self.main_tick_period, self.main_tick)
         # self.create_timer(0.1, self.main_tick)
@@ -597,6 +508,10 @@ class ZuuuHAL(Node):
         self.cmd_vel_t0 = time.time()
 
     def scan_filter_callback(self, msg):
+        self.scan_is_read = True
+        self.scan_t0 = time.time()
+        # LIDAR angle filter managemnt
+        # Temporary fix since https://github.com/ros-perception/laser_filters doesn't work on Foxy at the moment
         filtered_scan = LaserScan()
         filtered_scan.header = copy.deepcopy(msg.header)
         filtered_scan.angle_min = msg.angle_min
@@ -608,11 +523,6 @@ class ZuuuHAL(Node):
         filtered_scan.range_max = msg.range_max
         ranges = []
         intensities = []
-        obstacle_too_close = False
-        obstacle_way_too_close = False
-        min_dist = 10000.0
-        min_angle = 1000.0
-
         for i, r in enumerate(msg.ranges):
             angle = msg.angle_min + i*msg.angle_increment
             if angle > self.laser_upper_angle or angle < self.laser_lower_angle:
@@ -621,39 +531,16 @@ class ZuuuHAL(Node):
             else:
                 ranges.append(r)
                 intensities.append(msg.intensities[i])
-                if self.safety_on:
-                    dist = self.dist_to_point(r, angle)
-                    if dist < min_dist:
-                        min_dist = dist
-                        min_angle = angle
-                    if dist < self.critical_distance:
-                        obstacle_way_too_close = True
-                        self.critical_safety_is_active = True
-                        self.safety_is_active = True
-                        obstacle_too_close = True
-                    elif dist < self.safety_distance:
-                        self.safety_is_active = True
-                        obstacle_too_close = True
-
-        if self.safety_on:
-            if obstacle_way_too_close is False:
-                self.critical_safety_is_active = False
-            if obstacle_too_close is False:
-                self.safety_is_active = False
 
         filtered_scan.ranges = ranges
         filtered_scan.intensities = intensities
         self.scan_pub.publish(filtered_scan)
-        # self.get_logger().warn(
-        #     f"Min dist={min_dist*100:.1f}cm @angle {min_angle*180/math.pi:.1f}")
 
-    def dist_to_point(self, r, angle):
-        x = r*math.cos(angle)
-        y = r*math.sin(angle)
-        # Not using the TF transforms because this is faster
-        x = x + 0.155
-        dist = math.sqrt(x**2 + y**2)
-        return dist
+        # LIDAR safety management
+        self.lidar_safety.clear_measures()
+        if self.safety_on:
+            critical_scan = self.lidar_safety.process_scan(filtered_scan)
+            self.scan_critical_pub.publish(critical_scan)
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot):
         """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
@@ -753,6 +640,9 @@ class ZuuuHAL(Node):
                                     self.smoothing_factor*self.y_vel_goal_filtered)/(1+self.smoothing_factor)
         self.theta_vel_goal_filtered = (self.theta_vel_goal +
                                         self.smoothing_factor*self.theta_vel_goal_filtered)/(1+self.smoothing_factor)
+
+        self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered = self.lidar_safety.safety_check_speed_command(
+            self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
 
     def format_measurements(self, measurements):
         if measurements is None:
@@ -936,37 +826,21 @@ class ZuuuHAL(Node):
 
     def limit_duty_cycles(self, duty_cycles):
         # Between +- max_duty_cyle
-        safety_coeff = 1.0
-        if self.critical_safety_is_active:
-            safety_coeff = 0.3
-        elif self.safety_is_active:
-            safety_coeff = 0.5
-        # self.get_logger().warning(
-        #     f"safety_coeff:{safety_coeff}")
-
         for i in range(len(duty_cycles)):
             if duty_cycles[i] < 0:
-                duty_cycles[i] = max(-self.max_duty_cyle *
-                                     safety_coeff, duty_cycles[i])
+                duty_cycles[i] = max(-self.max_duty_cyle, duty_cycles[i])
             else:
-                duty_cycles[i] = min(self.max_duty_cyle *
-                                     safety_coeff, duty_cycles[i])
+                duty_cycles[i] = min(self.max_duty_cyle, duty_cycles[i])
         return duty_cycles
 
     def limit_wheel_speeds(self, wheel_speeds):
         # Between +- max_wheel_speed
-        safety_coeff = 1.0
-        if self.critical_safety_is_active:
-            safety_coeff = 0.1
-        elif self.safety_is_active:
-            safety_coeff = 0.5
         for i in range(len(wheel_speeds)):
             if wheel_speeds[i] < 0:
-                wheel_speeds[i] = max(-self.max_wheel_speed *
-                                      safety_coeff, wheel_speeds[i])
+                wheel_speeds[i] = max(-self.max_wheel_speed, wheel_speeds[i])
             else:
                 wheel_speeds[i] = min(
-                    self.max_wheel_speed*safety_coeff, wheel_speeds[i])
+                    self.max_wheel_speed, wheel_speeds[i])
         return wheel_speeds
 
     def read_measurements(self):
@@ -1035,15 +909,18 @@ class ZuuuHAL(Node):
         self.speed_service_on = False
 
     def main_tick(self, verbose=False):
-        duty_cycles = [0, 0, 0]
         t = time.time()
-        # Actually sending the commands
-        if verbose:
-            self.get_logger().info("cycles : {}".format(duty_cycles))
-
-        # if self.omnibase.back_wheel_measurements is not None:
-        #     self.get_logger().info("speed {:.2f}".format(
-        #         self.omnibase.back_wheel_measurements.rpm*2*math.pi/(60*self.omnibase.half_poles)))
+        if (not self.scan_is_read) or ((t - self.scan_t0) > self.scan_timeout):
+            # If too much time without a LIDAR scan, the speeds are set to 0 for safety.
+            self.get_logger().warning(
+                "waiting for a LIDAR scan to be read. Discarding all commands...")
+            wheel_speeds = self.ik_vel(0.0, 0.0, 0.0)
+            self.send_wheel_commands(wheel_speeds)
+            time.sleep(0.5)
+            return
+        if self.first_tick:
+            self.first_tick = False
+            self.get_logger().info("=> Zuuu HAL up and running! **")
 
         if self.mode is ZuuuModes.CMD_VEL:
             # If too much time without an order, the speeds are smoothed back to 0 for safety.
@@ -1056,6 +933,7 @@ class ZuuuHAL(Node):
                 self.y_vel_goal = 0.0
                 self.theta_vel_goal = 0.0
             self.filter_speed_goals()
+            # Applying the LIDAR safety
             wheel_speeds = self.ik_vel(
                 self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
             self.send_wheel_commands(wheel_speeds)
@@ -1094,6 +972,8 @@ class ZuuuHAL(Node):
                     x_vel, y_vel, theta_vel = self.position_control()
                 self.get_logger().info(
                     f"Sending x_vel {x_vel}, y_vel {y_vel}, theta_vel {theta_vel}")
+            x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
+                x_vel, y_vel, theta_vel)
             wheel_speeds = self.ik_vel(
                 x_vel, y_vel, theta_vel)
             self.send_wheel_commands(wheel_speeds)
