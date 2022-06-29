@@ -78,7 +78,7 @@ class ZuuuControlModes(Enum):
 class MobileBase:
     def __init__(
         self,
-        serial_port='/dev/vesc_wheels',
+        serial_port='/dev/ttyACM1',
         left_wheel_id=24,
         right_wheel_id=72,
         back_wheel_id=None,
