@@ -1,4 +1,15 @@
 # Zuuu Hardware Abstraction Layer
+## Purpose
+Zuuu HAL has the responsability to interact with zuuu's hardware and 'ROSify' the inputs and outputs.
+
+The mobile base can be controlled
+
+The HAL will periodically read the selected measurements from the controllers of the wheels (speed, temperature, voltage, etc) 
+and publish them into the adequate topics or services. The odometry is calculated and published (/odom topic and TF transform).
+
+Several interfaces to control the mobile base are exposed such as sending (x_vel, y_vel, theta_vel) speed commands or setting a (x, y, theta) goal position in the odometric frame. See [usage for details](#usage)
+
+
 ## Installation
 Clone this repository
 ```

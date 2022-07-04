@@ -32,25 +32,6 @@ from zuuu_hal.utils import PID, angle_diff, sign
 from zuuu_hal.lidar_safety import LidarSafety
 
 
-"""
-This node has the responsability to interact with zuuu's hardware and 'ROSify' the inputs and outputs.
-Zuuu's hardware here means 3 motor controllers and the LIDAR.
-Specificaly, this node will periodically read the selected measurements from the controllers of the wheels (speed, temperature, IMUs, etc) and publish them into the adequate topics (odom, etc).
-This node will also subscribe to /cmd_vel and write commands to the 3 motor controllers.
-"""
-
-"""
-TODO :
-- Read IMU (not supported by PyVesc out of the box). Hints: create a message (examples in getters.py) with "VedderCmd.COMM_GET_IMU_DATA".
-The unknowns are the field names and their types. Maybe the "IMU_VALUES" in the file "datatypes.h" in vesc_project.
-"""
-
-# Interesting stuff can be found in Modern Robotics' chapters:
-# 13.2 Omnidirectional Wheeled Mobile Robots
-# 13.4 Odometry
-# /!\ Our robot frame is different. Matching between their names (left) and ours (right): xb=y, yb=-x, theta=-theta, u1=uB, u2=uL, u3=uR
-
-
 class ZuuuModes(Enum):
     """
     Zuuu drive modes
@@ -102,8 +83,8 @@ class MobileBase:
         self.left_wheel_avg_rpm, self.right_wheel_avg_rpm, self.back_wheel_avg_rpm = 0, 0, 0
         self.left_wheel_rpm_deque, self.right_wheel_rpm_deque, self.back_wheel_rpm_deque = deque(
             [], 10), deque([], 10), deque([], 10)
-        # These values might be a tad too safe, however the battery should be almost empty when the cells are on average at 3.3V so there is little
-        # to win to go below this. Still tunable if needed.
+        # These values might be a tad too safe, however the battery should be almost empty when the cells are
+        # on average at 3.3V so there is little to win to go below this. Still tunable if needed.
         # The current battery has a BMS that shuts down the battery at 20V +-1V. So that would be 2.86V +-0.14V.
         self.battery_cell_warn_voltage = 3.5
         self.battery_cell_min_voltage = 3.3
@@ -155,11 +136,13 @@ class ZuuuHAL(Node):
         # Maing sure we don't run the node if the config file is not shared
         if self.get_parameter('max_duty_cyle').type_ is Parameter.Type.NOT_SET:
             self.get_logger().error(
-                f"Parameter 'max_duty_cyle' was not initialized. Check that the param file is given to the node (using the launch file is the way to go). Shutting down")
+                f"Parameter 'max_duty_cyle' was not initialized. Check that the param file is given to the node"
+                "(using the launch file is the way to go). Shutting down")
             self.destroy_node()
         if self.get_parameter('smoothing_factor').type_ is Parameter.Type.NOT_SET:
             self.get_logger().error(
-                f"Parameter 'smoothing_factor' was not initialized. Check that the param file is given to the node (using the launch file is the way to go). Shutting down")
+                f"Parameter 'smoothing_factor' was not initialized. Check that the param file is given to the node"
+                "(using the launch file is the way to go). Shutting down")
             self.destroy_node()
 
         # Parameters initialisation
@@ -230,7 +213,8 @@ class ZuuuHAL(Node):
         self.scan_is_read = False
         self.scan_timeout = 0.5
         self.lidar_safety = LidarSafety(
-            self.safety_distance, self.critical_distance, robot_collision_radius=0.5, speed_reduction_factor=0.88, logger=self.get_logger())
+            self.safety_distance, self.critical_distance, robot_collision_radius=0.5,
+            speed_reduction_factor=0.88, logger=self.get_logger())
 
         self.x_pid = PID(P=2.0, I=0.00, D=0.0, max_command=0.5,
                          max_i_contribution=0.0)
@@ -241,7 +225,8 @@ class ZuuuHAL(Node):
 
         self.max_wheel_speed = self.pwm_to_wheel_rot_speed(self.max_duty_cyle)
         self.get_logger().info(
-            f"The maximum PWM value is {self.max_duty_cyle*100}% => maximum wheel speed is set to {self.max_wheel_speed:.2f}rad/s")
+            f"The maximum PWM value is {self.max_duty_cyle*100}% => maximum wheel speed is set to "
+            "{self.max_wheel_speed:.2f}rad/s")
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -421,7 +406,8 @@ class ZuuuHAL(Node):
         # This service automatically changes the zuuu mode
         self.mode = ZuuuModes.SPEED
         self.get_logger().info(
-            f"Requested set_speed: duration={request.duration} x_vel='{request.x_vel}'m/s, y_vel='{request.y_vel}'m/s, rot_vel='{request.rot_vel}'rad/s")
+            f"Requested set_speed: duration={request.duration} x_vel='{request.x_vel}'m/s, y_vel='{request.y_vel}'m/s,"
+            "rot_vel='{request.rot_vel}'rad/s")
         self.x_vel_goal = request.x_vel
         self.y_vel_goal = request.y_vel
         self.theta_vel_goal = request.rot_vel
@@ -485,11 +471,11 @@ class ZuuuHAL(Node):
         voltage = self.battery_voltage
 
         if (min_voltage < voltage < warn_voltage):
-            self.get_logger().warning("Battery voltage LOW ({}V). Consider recharging. Warning threshold: {:.1f}V, stop threshold: {:.1f}V".format(
-                voltage, warn_voltage, min_voltage))
+            self.get_logger().warning("Battery voltage LOW ({}V). Consider recharging. Warning threshold: {:.1f}V, "
+                                      "stop threshold: {:.1f}V".format(voltage, warn_voltage, min_voltage))
         elif (voltage < min_voltage):
-            msg = "Battery voltage critically LOW ({}V). Emergency shutdown! Warning threshold: {:.1f}V, stop threshold: {:.1f}V".format(
-                voltage, warn_voltage, min_voltage)
+            msg = "Battery voltage critically LOW ({}V). Emergency shutdown! Warning threshold: {:.1f}V, "
+            "stop threshold: {:.1f}V".format(voltage, warn_voltage, min_voltage)
             self.get_logger().error(msg)
             self.emergency_shutdown()
             raise RuntimeError(msg)
@@ -543,12 +529,14 @@ class ZuuuHAL(Node):
             self.scan_critical_pub.publish(critical_scan)
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot):
-        """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
+        """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM
+        (based on measures made on a full Reachy Mobile)
         """
         return rot/22.7
 
     def wheel_rot_speed_to_pwm(self, rot):
-        """Uses a simple affine model to map the expected rotational speed of the wheel to a constant PWM (based on measures made on a full Reachy Mobile)
+        """Uses a simple affine model to map the expected rotational speed of the wheel to a constant PWM
+        (based on measures made on a full Reachy Mobile)
         """
         # Creating an arteficial null zone to avoid undesired behaviours for very small rot speeds
         epsilon = 0.02
@@ -562,7 +550,8 @@ class ZuuuHAL(Node):
         return pwm
 
     def pwm_to_wheel_rot_speed(self, pwm):
-        """Uses a simple affine model to map a pwm to the expected rotational speed of the wheel (based on measures made on a full Reachy Mobile)
+        """Uses a simple affine model to map a pwm to the expected rotational speed of the wheel
+        (based on measures made on a full Reachy Mobile)
         """
         # Creating an arteficial null zone to avoid undesired behaviours for very small rot speeds
         if abs(pwm) < 0.0126:
@@ -577,7 +566,8 @@ class ZuuuHAL(Node):
         return [self.wheel_rot_speed_to_pwm(rot_vel) for rot_vel in rot_vels]
 
     def ik_vel_old(self, x, y, rot):
-        """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame) and outputs the PWM to apply to each of the 3 motors in an omni setup
+        """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame)
+        and outputs the PWM to apply to each of the 3 motors in an omni setup
 
         Args:
             x (float): x speed (between -1 and 1). Positive "in front" of the robot.
@@ -593,8 +583,14 @@ class ZuuuHAL(Node):
 
         return [cycle_back, cycle_right, cycle_left]
 
+    # Interesting stuff can be found in Modern Robotics' chapters:
+    # 13.2 Omnidirectional Wheeled Mobile Robots
+    # 13.4 Odometry
+    # /!\ Our robot frame is different. Matching between their names (left) and ours (right):
+    # xb=y, yb=-x, theta=-theta, u1=uB, u2=uL, u3=uR
     def ik_vel(self, x_vel, y_vel, rot_vel):
-        """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame) and outputs the rotational speed (rad/s) of each of the 3 motors in an omni setup
+        """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame) and outputs the rotational speed (rad/s)
+        of each of the 3 motors in an omni setup
 
         Args:
             x (float): x speed (m/s). Positive "in front" of the robot.
@@ -607,13 +603,14 @@ class ZuuuHAL(Node):
         wheel_rot_speed_right = (1/self.omnibase.wheel_radius) * (
             self.omnibase.wheel_to_center*rot_vel + y_vel/2.0 + math.sin(math.pi/3)*x_vel)
         wheel_rot_speed_left = (1/self.omnibase.wheel_radius) * (self.omnibase.wheel_to_center *
-                                                                 rot_vel + math.sin(math.pi/3)*y_vel/2 - math.sin(math.pi/3)*x_vel)
+                                                                 rot_vel + math.sin(math.pi/3)*y_vel/2 -
+                                                                 math.sin(math.pi/3)*x_vel)
 
         return [wheel_rot_speed_back, wheel_rot_speed_right, wheel_rot_speed_left]
 
     def dk_vel(self, rot_l, rot_r, rot_b):
-        """Takes the 3 rotational speeds (in rpm) of the 3 wheels and outputs the x linear speed (m/s), y linear speed (m/s) and rotational speed (rad/s)
-        in the robot egocentric frame
+        """Takes the 3 rotational speeds (in rpm) of the 3 wheels and outputs the x linear speed (m/s),
+        y linear speed (m/s) and rotational speed (rad/s) in the robot egocentric frame
 
         Args:
             rot_l (float): rpm speed of the left wheel
@@ -641,8 +638,10 @@ class ZuuuHAL(Node):
         self.theta_vel_goal_filtered = (self.theta_vel_goal +
                                         self.smoothing_factor*self.theta_vel_goal_filtered)/(1+self.smoothing_factor)
 
-        self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered = self.lidar_safety.safety_check_speed_command(
-            self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
+        self.x_vel_goal_filtered, \
+            self.y_vel_goal_filtered, \
+            self.theta_vel_goal_filtered = self.lidar_safety.safety_check_speed_command(
+                self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
 
     def format_measurements(self, measurements):
         if measurements is None:
@@ -687,7 +686,9 @@ class ZuuuHAL(Node):
         to_print += "\n\n Fails ('Nones') left:{}, right:{}, back:{}".format(
             self.omnibase.left_wheel_nones, self.omnibase.right_wheel_nones, self.omnibase.back_wheel_nones)
         to_print += "\n\n AVG RPM left:{:.2f}, right:{:.2f}, back:{:.2f}".format(
-            self.omnibase.left_wheel_avg_rpm/self.omnibase.half_poles, self.omnibase.right_wheel_avg_rpm/self.omnibase.half_poles, self.omnibase.back_wheel_avg_rpm/self.omnibase.half_poles)
+            self.omnibase.left_wheel_avg_rpm/self.omnibase.half_poles,
+            self.omnibase.right_wheel_avg_rpm/self.omnibase.half_poles,
+            self.omnibase.back_wheel_avg_rpm/self.omnibase.half_poles)
 
         self.get_logger().info("{}".format(to_print))
         # 20 tours en 35s, avg_rpm ~=34
@@ -788,12 +789,15 @@ class ZuuuHAL(Node):
         self.br.sendTransform(t)
 
     def tick_odom(self):
-        # TODO VESC speed values are, as is normal, very noisy at low speeds. We have no control on how the speeds are calculated as is.
+        # TODO VESC speed values are, as is normal, very noisy at low speeds.
+        # We have no control on how the speeds are calculated as is.
         # -> By reading the encoder ticks directly and making the calculations here we could make this a tad better.
 
-        # Local speeds in egocentric frame. Care, "rpm" are actually erpm and need to be divided by half the amount of magnetic poles to get the actual rpm.
+        # Local speeds in egocentric frame.
+        # "rpm" are actually erpm and need to be divided by half the amount of magnetic poles to get the actual rpm.
         self.x_vel, self.y_vel, self.theta_vel = self.dk_vel(self.omnibase.left_wheel_rpm/self.omnibase.half_poles,
-                                                             self.omnibase.right_wheel_rpm/self.omnibase.half_poles, self.omnibase.back_wheel_rpm/self.omnibase.half_poles)
+                                                             self.omnibase.right_wheel_rpm/self.omnibase.half_poles,
+                                                             self.omnibase.back_wheel_rpm/self.omnibase.half_poles)
         # self.get_logger().info(
         #     "IK vel : {:.2f}, {:.2f}, {:.2f}".format(self.x_vel, self.y_vel, self.theta_vel))
         # Applying the small displacement in the world-fixed odom frame (simple 2D rotation)
