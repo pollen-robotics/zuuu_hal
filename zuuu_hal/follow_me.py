@@ -12,7 +12,7 @@ import sys
 
 # The cv2 import is only needed in the verbose mode of the follow_me
 # where images are created based on the LIDAR scan
-#import cv2
+# import cv2
 
 
 def sign(x):
@@ -69,10 +69,11 @@ class FollowMe(Node):
         return d
 
     def get_barycenter_offset(self, range_min, range_max, detection_angle, verbose=False):
-        """Listen to the /scan LaserScan topic and outputs dlin_percent and dang_percent which represent how far away from the center of the chosen shape the barycenter of points is.
+        """Listen to the /scan LaserScan topic and outputs dlin_percent and dang_percent
+        which represent how far away from the center of the chosen shape the barycenter of points is.
         """
 
-        """ 
+        """
         sensor_msgs.msg.LaserScan(header=std_msgs.msg.Header(stamp=builtin_interfaces.msg.Time(sec=1643673771
          nanosec=826557127)
          frame_id='laser')
@@ -120,7 +121,7 @@ class FollowMe(Node):
                 d = float(r)
                 if np.isnan(d) or math.isinf(d):
                     continue
-            except:
+            except ValueError as e:
                 # inf?
                 continue
             if d < range_min or d >= range_max:
@@ -149,16 +150,18 @@ class FollowMe(Node):
             dlin_percent = max(-1, min(1, 2*dist /
                                (pixel_per_meter*(range_max - range_min))))
             dang_percent = max(-1, min(1, avg_angle/half_angle))
-            # self.get_logger().info("avg_x_pixels={}, avg_y_pixels){}, avg_angle={}, dist_pixels={}, dlin_percent={}, dang_percent={}, center_y={}".format(
-            #     sum_x, sum_y, avg_angle, dist, dlin_percent, dang_percent, center_y))
+            # self.get_logger().info("avg_x_pixels={}, avg_y_pixels){}, avg_angle={}, dist_pixels={}, dlin_percent={},
+            #  dang_percent={}, center_y={}".format(sum_x, sum_y, avg_angle,
+            #  dist, dlin_percent, dang_percent, center_y))
         else:
             dlin_percent = 0
             dang_percent = 0
 
         if verbose:
-            cv2.imshow("image", image)
+            # Disabling the pylint warnings for these 2 lines because forcing the cv2 import is worse.
+            cv2.imshow("image", image)  # type: ignore
             # cv2.imwrite("raw" + str(datetime.utcnow())+".png", image)
-            cv2.waitKey(1)
+            cv2.waitKey(1)  # type: ignore
         return dlin_percent, dang_percent
 
     def main_tick(self, verbose=False):

@@ -20,18 +20,19 @@ def sign(x):
 
 
 class PID:
-    def __init__(self, P=1.0, I=0.0, D=0.0, max_command=10, max_i_contribution=5):
+    def __init__(self, p=1.0, i=0.0, d=0.0, max_command=10, max_i_contribution=5):
         """PID implementation with anti windup.
         Keyword Arguments:
             P {float} -- Proportional gain (default: {1.0})
             I {float} -- Integral gain (default: {0.0})
             D {float} -- Differential gain (default: {0.0})
             max_command {float} -- The output command will be trimmed to +- max_command (default: {10})
-            max_i_contribution {float} -- The integral contribution will be trimmed to +- max_i_contribution (default: {5})
+            max_i_contribution {float} -- The integral contribution will be trimmed to
+                +- max_i_contribution (default: {5})
         """
-        self.p = P
-        self.i = I
-        self.d = D
+        self.p = p
+        self.i = i
+        self.d = d
         self.max_command = max_command
         self.max_i_contribution = max_i_contribution
         self.goal_value = 0
@@ -64,7 +65,8 @@ class PID:
             return x
 
     def tick(self, current_value, is_angle=False):
-        """PID calculations. If is_angle is True, then the error will be calculated as the smallest angle between the goal and the current_value
+        """PID calculations. If is_angle is True, then the error will be calculated as the smallest angle between
+        the goal and the current_value
         Arguments:
             current_value {float} -- Current state, usually the feedback value
 

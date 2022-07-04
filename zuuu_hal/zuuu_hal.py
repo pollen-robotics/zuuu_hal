@@ -216,11 +216,11 @@ class ZuuuHAL(Node):
             self.safety_distance, self.critical_distance, robot_collision_radius=0.5,
             speed_reduction_factor=0.88, logger=self.get_logger())
 
-        self.x_pid = PID(P=2.0, I=0.00, D=0.0, max_command=0.5,
+        self.x_pid = PID(p=2.0, i=0.00, d=0.0, max_command=0.5,
                          max_i_contribution=0.0)
-        self.y_pid = PID(P=2.0, I=0.00, D=0.0, max_command=0.5,
+        self.y_pid = PID(p=2.0, i=0.00, d=0.0, max_command=0.5,
                          max_i_contribution=0.0)
-        self.theta_pid = PID(P=2.0, I=0.0, D=0.0,
+        self.theta_pid = PID(p=2.0, i=0.0, d=0.0,
                              max_command=1.0, max_i_contribution=0.0)
 
         self.max_wheel_speed = self.pwm_to_wheel_rot_speed(self.max_duty_cyle)
@@ -243,9 +243,6 @@ class ZuuuHAL(Node):
         self.scan_sub  # prevent unused variable warning... JESUS WHAT HAVE WE BECOME
         self.scan_pub = self.create_publisher(
             LaserScan, 'scan_filterd', 10)
-
-        self.scan_critical_pub = self.create_publisher(
-            LaserScan, 'scan_critical', 10)
 
         self.pub_back_wheel_rpm = self.create_publisher(
             Float32, 'back_wheel_rpm', 2)
@@ -525,8 +522,7 @@ class ZuuuHAL(Node):
         # LIDAR safety management
         self.lidar_safety.clear_measures()
         if self.safety_on:
-            critical_scan = self.lidar_safety.process_scan(filtered_scan)
-            self.scan_critical_pub.publish(critical_scan)
+            self.lidar_safety.process_scan(filtered_scan)
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot):
         """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM

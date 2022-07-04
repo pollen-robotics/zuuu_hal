@@ -46,7 +46,7 @@ else:
 msg = """
 Modified version of the default ROS2 keyboard teleop node.
 This node takes keypresses from the keyboard and publishes them
-as Twist messages. It works best with an AZERTY keyboard with a 
+as Twist messages. It works best with an AZERTY keyboard with a
 pad num layout :)
 
 Holonomic mode (translations only):
@@ -157,8 +157,9 @@ def main():
             x = x * lin_speed
             y = y * lin_speed
             th = th * rot_speed
-            print("\nx_vel: {:.2f}m/s, y_vel: {:.2f}m/s, theta_vel: {:.2f}rad/s.\nMax lin_vel: {:.2f}m/s, max rot_vel: {:.2f}rad/s".format(
-                x, y, th, lin_speed, rot_speed))
+            print("\nx_vel: {:.2f}m/s, y_vel: {:.2f}m/s, theta_vel: {:.2f}rad/s.\n"
+                  "Max lin_vel: {:.2f}m/s, max rot_vel: {:.2f}rad/s".format(
+                      x, y, th, lin_speed, rot_speed))
 
             twist = geometry_msgs.msg.Twist()
             twist.linear.x = x

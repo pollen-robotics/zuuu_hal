@@ -5,23 +5,17 @@ from zuuu_hal.utils import angle_diff
 from sensor_msgs.msg import LaserScan
 
 
-"""
-TODO
-[rplidar_scan_publisher-1] [WARN] [1656351979.817559703] [rplidar_scan_publisher]: 
-New subscription discovered on this topic, requesting incompatible QoS. 
-No messages will be sent to it. Last incompatible policy: RELIABILITY_QOS_POLICY
-"""
-
-
 class LidarSafety:
     def __init__(self, safety_distance, critical_distance, robot_collision_radius, speed_reduction_factor, logger):
         """Utility class to reduce Zuuu's speed when too close to obstacles seen by the LIDAR.
         Functional behaviour:
         - safety_distance >= critical_distance
-        - Zuuu's speed is slowed down if the direction of speed matches the direction of at least 1 LIDAR point in the safety_distance range
-        - Zuuu's speed is changed to 0 if the direction of speed matches the direction of at least 1 LIDAR point in the critical_distance range
-        - If at least 1 point is in the critical distance, then even motions that move away from the obstacles are slowed down to the "safety_zone" speed
-
+        - Zuuu's speed is slowed down if the direction of speed matches the direction of at least 1 LIDAR point in
+        the safety_distance range
+        - Zuuu's speed is changed to 0 if the direction of speed matches the direction of at least 1 LIDAR point in
+        the critical_distance range
+        - If at least 1 point is in the critical distance, then even motions that move away from the obstacles are
+        slowed down to the "safety_zone" speed
         """
         self.safety_distance = safety_distance
         self.critical_distance = critical_distance
@@ -40,15 +34,6 @@ class LidarSafety:
 
     def process_scan(self, msg):
         self.clear_measures()
-        critical_scan = LaserScan()
-        critical_scan.header = copy.deepcopy(msg.header)
-        critical_scan.angle_min = msg.angle_min
-        critical_scan.angle_max = msg.angle_max
-        critical_scan.angle_increment = msg.angle_increment
-        critical_scan.time_increment = msg.time_increment
-        critical_scan.scan_time = msg.scan_time
-        critical_scan.range_min = msg.range_min
-        critical_scan.range_max = msg.range_max
         ranges = []
         intensities = []
         nb_critical = 0
@@ -73,10 +58,6 @@ class LidarSafety:
             elif dist < self.safety_distance and (msg.intensities[i] > 0.1):
                 self.unsafe_angles.append(
                     self.create_forbidden_angles(angle, dist))
-        critical_scan.ranges = ranges
-        critical_scan.intensities = intensities
-
-        return critical_scan
 
     def safety_check_speed_command(self, x_vel, y_vel, theta_vel):
         if len(self.unsafe_angles) == 0 and len(self.critical_angles) == 0:
@@ -93,7 +74,8 @@ class LidarSafety:
                     # If the direction matches a critical angle, the speed is 0 in x and y
                     return 0.0, 0.0, theta_vel*self.speed_reduction_factor
             # The direction does not match a critical angle but the speed is still limited
-            return x_vel*self.speed_reduction_factor, y_vel*self.speed_reduction_factor, theta_vel*self.speed_reduction_factor
+            return x_vel*self.speed_reduction_factor, y_vel*self.speed_reduction_factor,\
+                theta_vel*self.speed_reduction_factor
         else:
             # Zuuu is moderately close to an obstacle."
             if x_vel == 0.0 and y_vel == 0.0:
