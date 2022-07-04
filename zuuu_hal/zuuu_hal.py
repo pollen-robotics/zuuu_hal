@@ -59,7 +59,7 @@ class ZuuuControlModes(Enum):
 class MobileBase:
     def __init__(
         self,
-        serial_port='/dev/ttyACM1',
+        serial_port='/dev/vesc_wheels',
         left_wheel_id=24,
         right_wheel_id=72,
         back_wheel_id=None,
@@ -855,7 +855,7 @@ class ZuuuHAL(Node):
             # Decidemment ! Keeping last valid measure...
             self.nb_full_com_fails += 1
             # self.get_logger().warning(
-            #     "Could not read any of the motor drivers. This should not happen often.")
+            #     "Could not read any of the motor drivers. This should not happen too often.")
             if (self.nb_full_com_fails > self.max_full_com_fails):
                 msg = "Too many communication errors, emergency shutdown"
                 self.get_logger().error(msg)
@@ -964,21 +964,16 @@ class ZuuuHAL(Node):
                     (self.x_goal - self.x_odom)**2 +
                     (self.y_goal - self.y_odom)**2
                 )
-                self.get_logger().info(
-                    f"ON!! dist {distance}, ang {abs(angle_diff(self.theta_goal, self.theta_odom))}")
                 if distance < self.xy_tol and abs(angle_diff(self.theta_goal, self.theta_odom)) < self.theta_tol:
                     self.goto_service_on = False
                 else:
                     x_vel, y_vel, theta_vel = self.position_control()
-                self.get_logger().info(
-                    f"Sending x_vel {x_vel}, y_vel {y_vel}, theta_vel {theta_vel}")
+
             x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
                 x_vel, y_vel, theta_vel)
             wheel_speeds = self.ik_vel(
                 x_vel, y_vel, theta_vel)
             self.send_wheel_commands(wheel_speeds)
-            self.get_logger().info(
-                f"self.goto_service_on {self.goto_service_on}")
 
         elif self.mode is ZuuuModes.EMERGENCY_STOP:
             msg = "Emergency stop requested"
