@@ -369,17 +369,23 @@ class ZuuuHAL(Node):
         return SetParametersResult(successful=success)
 
     def handle_zuuu_mode(self, request, response):
-        mode = request.mode
-        self.get_logger().info("Requested mode change to :'{}'".format(mode))
+        self.get_logger().info("Requested mode change to :'{}'".format(request.mode))
+        response.success = False
 
-        if mode in [m.name for m in ZuuuModes]:
-            self.mode = ZuuuModes[mode]
-            response.success = True
-            if self.mode is not ZuuuModes.SPEED and self.mode is not ZuuuModes.GOTO:
+        if request.mode in [m.name for m in ZuuuModes]:
+            if request.mode == ZuuuModes.SPEED.name:
+                self.get_logger().info("'{}' should not be changed by hand, use the SetSpeed service instead"
+                                       .format(request.mode))
+            elif request.mode == ZuuuModes.GOTO.name:
+                self.get_logger().info("'{}' should not be changed by hand, use the GoToXYTheta service instead"
+                                       .format(request.mode))
+            else:
                 # Changing the mode is a way to prematurely end an on going task requested through a service
                 self.stop_ongoing_services()
-        else:
-            response.success = False
+                self.mode = ZuuuModes[request.mode]
+                response.success = True
+                self.get_logger().info("OK")
+
         return response
 
     def handle_get_zuuu_mode(self, request, response):
