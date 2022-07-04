@@ -1,8 +1,8 @@
 import math
-import copy
 
+from subprocess import check_output
 from zuuu_hal.utils import angle_diff
-from sensor_msgs.msg import LaserScan
+import traceback
 
 
 class LidarSafety:
@@ -26,6 +26,21 @@ class LidarSafety:
         self.critical_angles = []
         self.at_least_one_critical = False
         self.logger = logger
+        model = check_output(['reachy-identify-zuuu-model']).strip().decode()
+        # Not using the TF transforms because this is faster
+        # TODO use a static TF2 transform instead
+        try:
+            float_model = float(model)
+            if float_model < 1.0:
+                self.x_offset = 0.155
+            else:
+                self.x_offset = 0.1815
+        except Exception:
+            msg = "ZUUU version can't be processed, check that the 'zuuu_model' tag is "\
+                "present in the .reachy.yaml file"
+            self.logger.error(msg)
+            self.logger.error(traceback.format_exc())
+            raise RuntimeError(msg)
 
     def clear_measures(self):
         self.unsafe_angles = []
@@ -92,9 +107,8 @@ class LidarSafety:
     def dist_to_point(self, r, angle):
         x = r*math.cos(angle)
         y = r*math.sin(angle)
-        # Not using the TF transforms because this is faster
-        # TODO use a static TF2 transform instead
-        x = x + 0.155
+
+        x = x + self.x_offset
         dist = math.sqrt(x**2 + y**2)
         return dist
 
