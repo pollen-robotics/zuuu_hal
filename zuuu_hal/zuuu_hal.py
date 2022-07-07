@@ -177,12 +177,12 @@ class ZuuuHAL(Node):
         # Maing sure we don't run the node if the config file is not shared
         if self.get_parameter('max_duty_cyle').type_ is Parameter.Type.NOT_SET:
             self.get_logger().error(
-                f"Parameter 'max_duty_cyle' was not initialized. Check that the param file is given to the node"
+                "Parameter 'max_duty_cyle' was not initialized. Check that the param file is given to the node"
                 "(using the launch file is the way to go). Shutting down")
             self.destroy_node()
         if self.get_parameter('smoothing_factor').type_ is Parameter.Type.NOT_SET:
             self.get_logger().error(
-                f"Parameter 'smoothing_factor' was not initialized. Check that the param file is given to the node"
+                "Parameter 'smoothing_factor' was not initialized. Check that the param file is given to the node"
                 "(using the launch file is the way to go). Shutting down")
             self.destroy_node()
 
@@ -267,7 +267,7 @@ class ZuuuHAL(Node):
         self.max_wheel_speed = self.pwm_to_wheel_rot_speed(self.max_duty_cyle)
         self.get_logger().info(
             f"The maximum PWM value is {self.max_duty_cyle*100}% => maximum wheel speed is set to "
-            "{self.max_wheel_speed:.2f}rad/s")
+            f"{self.max_wheel_speed:.2f}rad/s")
 
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -463,7 +463,7 @@ class ZuuuHAL(Node):
         self.mode = ZuuuModes.SPEED
         self.get_logger().info(
             f"Requested set_speed: duration={request.duration} x_vel='{request.x_vel}'m/s, y_vel='{request.y_vel}'m/s,"
-            "rot_vel='{request.rot_vel}'rad/s")
+            f"rot_vel='{request.rot_vel}'rad/s")
         self.x_vel_goal = request.x_vel
         self.y_vel_goal = request.y_vel
         self.theta_vel_goal = request.rot_vel
