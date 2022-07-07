@@ -1,13 +1,18 @@
 import math
-
-from subprocess import check_output
-from zuuu_hal.utils import angle_diff
 import traceback
+from subprocess import check_output
+from typing import List
+
+
+from sensor_msgs.msg import LaserScan
+
+from zuuu_hal.utils import angle_diff
 
 
 class LidarSafety:
-    def __init__(self, safety_distance, critical_distance, robot_collision_radius, speed_reduction_factor, logger):
-        """Utility class to reduce Zuuu's speed when too close to obstacles seen by the LIDAR.
+    def __init__(self, safety_distance: float, critical_distance: float, robot_collision_radius: float,
+                 speed_reduction_factor: float, logger) -> None:
+        """Utility class to reduce Zuuu's speed when the mobile base is too close to obstacles seen by the LIDAR.
         Functional behaviour:
         - safety_distance >= critical_distance
         - Zuuu's speed is slowed down if the direction of speed matches the direction of at least 1 LIDAR point in
@@ -42,12 +47,15 @@ class LidarSafety:
             self.logger.error(traceback.format_exc())
             raise RuntimeError(msg)
 
-    def clear_measures(self):
+    def clear_measures(self) -> None:
+        """Clears all previous measures"""
         self.unsafe_angles = []
         self.critical_angles = []
         self.at_least_one_critical = False
 
-    def process_scan(self, msg):
+    def process_scan(self, msg: LaserScan) -> None:
+        """Takes as input a LaserScan and finds in it the points that could cause a safety 
+        hazard based on their proximity"""
         self.clear_measures()
         ranges = []
         intensities = []
@@ -74,7 +82,8 @@ class LidarSafety:
                 self.unsafe_angles.append(
                     self.create_forbidden_angles(angle, dist))
 
-    def safety_check_speed_command(self, x_vel, y_vel, theta_vel):
+    def safety_check_speed_command(self, x_vel: float, y_vel: float, theta_vel: float) -> List[float]:
+        """Limits the input speed command based on the potential safety hazard"""
         if len(self.unsafe_angles) == 0 and len(self.critical_angles) == 0:
             # There are no close obstacles, the speed commands are left untouched
             return x_vel, y_vel, theta_vel
@@ -104,7 +113,9 @@ class LidarSafety:
             # The direction does not match an unsafe angle, the speed commands are left untouched
             return x_vel, y_vel, theta_vel
 
-    def dist_to_point(self, r, angle):
+    def dist_to_point(self, r: float, angle: float) -> float:
+        """Calculates the distance between a LIDAR point and the center of the robot. 
+        To do this the frame of the point is changed from the LIDAR frame to the base_footprint frame."""
         x = r*math.cos(angle)
         y = r*math.sin(angle)
 
@@ -112,7 +123,9 @@ class LidarSafety:
         dist = math.sqrt(x**2 + y**2)
         return dist
 
-    def create_forbidden_angles(self, angle, dist):
+    def create_forbidden_angles(self, angle: float, dist: float) -> List[float]:
+        """Creates a pair [angle, half_forbidden_angle_span]. 
+        This represents the direction span that could be dangerous based on a LIDAR input"""
         # Half of the forbidden angle span
         beta = abs(math.atan2(self.robot_collision_radius, dist))
         return [angle, beta]
