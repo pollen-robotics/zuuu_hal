@@ -1,3 +1,25 @@
+"""
+    Zuuu's Hardware Abstraction Layer main node.
+    'Hardware' here means the three wheel controllers, the battery and the LIDAR.
+    The responsability of the node is to read the sensors, handle common calculations 
+    (filtering, odometry, inverse kinematics) and exposing control interfaces.
+
+    The following ROS services are exposed to:
+    - Get or reset the odometry (GetOdometry, ResetOdometry)
+    - Get the battery voltage (GetBatteryVoltage)
+    - Set an (x_vel, y_vel, theta_vel) speed command for a fixed period of time (SetSpeed)
+    - Set a (x, y, theta) goal position in the odometric frame (GoToXYTheta, IsGoToFinished, DistanceToGoal)
+    - Manage drive modes (GetZuuuMode, SetZuuuMode)
+    - Enable/disable the LIDAR safety (SetZuuuSafety)
+
+    The following topics are published for:
+    - Filtering the LIDAR (scan_filterd)
+    - Reading the wheels rotational speed (back_wheel_rpm, left_wheel_rpm, right_wheel_rpm)
+    - Reading the odometry (odom)
+
+    See params.yaml for the list of ROS parameters.
+"""
+
 import time
 import math
 import numpy as np
@@ -7,6 +29,7 @@ import sys
 from enum import Enum
 from collections import deque
 from csv import writer
+from typing import List
 
 import rclpy
 import rclpy.logging
@@ -51,18 +74,25 @@ class ZuuuModes(Enum):
 
 
 class ZuuuControlModes(Enum):
-    """Zuuu control modes"""
+    """
+    Zuuu control modes
+    OPEN_LOOP = The HAL will send PWM commands to the controllers.
+    PID = The HAL will send speed commands to the controllers, the control is made by the low level PIDs
+    """
     OPEN_LOOP = 1
     PID = 2
 
 
 class MobileBase:
+    """Mobile base representation and the interface with low level controllers
+    """
+
     def __init__(
         self,
-        serial_port='/dev/vesc_wheels',
-        left_wheel_id=24,
-        right_wheel_id=72,
-        back_wheel_id=None,
+        serial_port: str = '/dev/vesc_wheels',
+        left_wheel_id: int = 24,
+        right_wheel_id: int = 72,
+        back_wheel_id: int = None,
     ) -> None:
 
         params = [
@@ -91,12 +121,16 @@ class MobileBase:
         self.battery_nb_cells = 7
         self.battery_check_period = 60
 
-    def read_all_measurements(self):
+    def read_all_measurements(self) -> None:
+        """Reads all the measurements for the left, right and back wheels
+        """
         self.left_wheel_measurements = self.left_wheel.get_measurements()
         self.right_wheel_measurements = self.right_wheel.get_measurements()
         self.back_wheel_measurements = self.back_wheel.get_measurements()
 
-    def deque_to_avg(self, deque):
+    def deque_to_avg(self, deque: deque) -> float:
+        """Returns the average of the values contained in deque
+        """
         sum = 0
         len = deque.maxlen
         for i in deque:
@@ -105,7 +139,14 @@ class MobileBase:
 
 
 class ZuuuHAL(Node):
-    def __init__(self):
+    """Zuuu's Hardware Abstraction Layer node
+    """
+
+    def __init__(self) -> None:
+        """Node initialisation.
+        ROS side: setup of the timers, callbacks, topics, services and parameters.
+        Low level side: connecting with the hardware and making a first read of the sensors
+        """
         super().__init__('zuuu_hal')
         self.get_logger().info("Starting zuuu_hal!")
         self.omnibase = MobileBase()
@@ -305,7 +346,10 @@ class ZuuuHAL(Node):
         self.create_timer(self.omnibase.battery_check_period,
                           self.check_battery)
 
-    def parameters_callback(self, params):
+    def parameters_callback(self, params) -> None:
+        """When a ROS parameter is changed, this method will be called to verify the change and accept/deny it.
+
+        """
         success = False
         for param in params:
             if param.type_ in [Parameter.Type.DOUBLE, Parameter.Type.INTEGER]:
@@ -368,7 +412,9 @@ class ZuuuHAL(Node):
 
         return SetParametersResult(successful=success)
 
-    def handle_zuuu_mode(self, request, response):
+    def handle_zuuu_mode(self, request: SetZuuuMode.Request, response: SetZuuuMode.Response
+                         ) -> SetZuuuMode.Response:
+        """Handle SetZuuuMode service request"""
         self.get_logger().info("Requested mode change to :'{}'".format(request.mode))
         response.success = False
 
@@ -388,24 +434,31 @@ class ZuuuHAL(Node):
 
         return response
 
-    def handle_get_zuuu_mode(self, request, response):
+    def handle_get_zuuu_mode(self, request: GetZuuuMode.Request, response: GetZuuuMode.Response
+                             ) -> GetZuuuMode.Response:
+        """Handle GetZuuuMode service request"""
         response.mode = self.mode.name
         return response
 
-    def handle_reset_odometry(self, request, response):
+    def handle_reset_odometry(self, request: ResetOdometry.Request, response: ResetOdometry.Response
+                              ) -> ResetOdometry.Response:
+        """Handle ResetOdometry service request"""
         # Resetting asynchronously to prevent race conditions.
         self.reset_odom = True
         self.get_logger().info("Requested to reset the odometry frame")
         response.success = True
         return response
 
-    def handle_get_odometry(self, request, response):
+    def handle_get_odometry(self, request: GetOdometry.Request, response: GetOdometry.Response
+                            ) -> GetOdometry.Response:
         response.x = self.x_odom
         response.y = self.y_odom
         response.theta = self.theta_odom
         return response
 
-    def handle_set_speed(self, request, response):
+    def handle_set_speed(self, request: SetSpeed.Request, response: SetSpeed.Response
+                         ) -> SetSpeed.Response:
+        """Handle SetSpeed service request"""
         # This service automatically changes the zuuu mode
         self.mode = ZuuuModes.SPEED
         self.get_logger().info(
@@ -419,7 +472,9 @@ class ZuuuHAL(Node):
         response.success = True
         return response
 
-    def handle_go_to(self, request, response):
+    def handle_go_to(self, request: GoToXYTheta.Request, response: GoToXYTheta.Response
+                     ) -> GoToXYTheta.Response:
+        """Handle GoToXYTheta service request"""
         # This service automatically changes the zuuu mode
         self.mode = ZuuuModes.GOTO
         self.get_logger().info(
@@ -434,12 +489,16 @@ class ZuuuHAL(Node):
         response.success = True
         return response
 
-    def handle_is_go_to_finished(self, request, response):
+    def handle_is_go_to_finished(self, request: IsGoToFinished.Request, response: IsGoToFinished.Response
+                                 ) -> IsGoToFinished.Response:
+        """handle IsGoToFinished service request"""
         # Returns True if the goal position is reached
         response.success = self.goto_service_on
         return response
 
-    def handle_distance_to_goal(self, request, response):
+    def handle_distance_to_goal(self, request: DistanceToGoal.Request, response: DistanceToGoal.Response
+                                ) -> DistanceToGoal.Response:
+        """Handle DistanceToGoal service resquest"""
         response.delta_x = self.x_goal - self.x_odom
         response.delta_y = self.y_goal - self.y_odom
         response.delta_theta = angle_diff(self.theta_goal, self.theta_odom)
@@ -448,11 +507,15 @@ class ZuuuHAL(Node):
             (self.y_goal - self.y_odom)**2)
         return response
 
-    def handle_get_battery_voltage(self, request, response):
+    def handle_get_battery_voltage(self, request: GetBatteryVoltage.Request, response: GetBatteryVoltage.Response
+                                   ) -> GetBatteryVoltage.Response:
+        """Handle GetBatteryVoltage service request"""
         response.voltage = self.battery_voltage
         return response
 
-    def handle_zuuu_set_safety(self, request, response):
+    def handle_zuuu_set_safety(self, request: SetZuuuSafety.Request, response: SetZuuuSafety.Response
+                               ) -> SetZuuuSafety.Response:
+        """Hangle SetZuuuSafety service request"""
         safety_on = request.safety_on
         state = 'ON' if safety_on else 'OFF'
         self.get_logger().info(f"Lidar safety is now {state}")
@@ -460,7 +523,10 @@ class ZuuuHAL(Node):
         response.success = True
         return response
 
-    def check_battery(self, verbose=False):
+    def check_battery(self, verbose: bool = False) -> None:
+        """Checks that the battery readings are not too old and forces a read if need be.
+        Checks that the battery voltages are safe and warns or stops the HAL accordingly.
+        """
         t = time.time()
         if verbose:
             self.print_all_measurements()
@@ -485,18 +551,24 @@ class ZuuuHAL(Node):
         else:
             self.get_logger().warning("Battery voltage OK ({}V)".format(voltage))
 
-    def emergency_shutdown(self):
+    def emergency_shutdown(self) -> None:
+        """Sets a PWM of 0V to the three wheel motors, equivalent to a brake.
+        """
         self.omnibase.back_wheel.set_duty_cycle(0)
         self.omnibase.left_wheel.set_duty_cycle(0)
         self.omnibase.right_wheel.set_duty_cycle(0)
         self.get_logger().warn("Emergency shutdown!")
         time.sleep(0.1)
 
-    def cmd_vel_callback(self, msg):
+    def cmd_vel_callback(self, msg: Twist) -> None:
+        """Handles the callback on the /cmd_vel topic
+        """
         self.cmd_vel = msg
         self.cmd_vel_t0 = time.time()
 
-    def scan_filter_callback(self, msg):
+    def scan_filter_callback(self, msg: LaserScan) -> None:
+        """Callback method on the /scan topic. Handles the LIDAR filtering and safety calculations.
+        """
         self.scan_is_read = True
         self.scan_t0 = time.time()
         # LIDAR angle filter managemnt
@@ -530,13 +602,13 @@ class ZuuuHAL(Node):
         if self.safety_on:
             self.lidar_safety.process_scan(filtered_scan)
 
-    def wheel_rot_speed_to_pwm_no_friction(self, rot):
+    def wheel_rot_speed_to_pwm_no_friction(self, rot: float) -> float:
         """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM
         (based on measures made on a full Reachy Mobile)
         """
         return rot/22.7
 
-    def wheel_rot_speed_to_pwm(self, rot):
+    def wheel_rot_speed_to_pwm(self, rot: float) -> float:
         """Uses a simple affine model to map the expected rotational speed of the wheel to a constant PWM
         (based on measures made on a full Reachy Mobile)
         """
@@ -551,7 +623,7 @@ class ZuuuHAL(Node):
 
         return pwm
 
-    def pwm_to_wheel_rot_speed(self, pwm):
+    def pwm_to_wheel_rot_speed(self, pwm: float) -> float:
         """Uses a simple affine model to map a pwm to the expected rotational speed of the wheel
         (based on measures made on a full Reachy Mobile)
         """
@@ -563,11 +635,20 @@ class ZuuuHAL(Node):
 
         return rot
 
-    def ik_vel_to_pwm(self, x_vel, y_vel, rot_vel):
+    def ik_vel_to_pwm(self, x_vel: float, y_vel: float, rot_vel: float) -> List[float]:
+        """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame)
+        and outputs the PWM to apply to each of the 3 motors in an omni setup
+
+        Args:
+            x (float): x speed (m/s). Positive "in front" of the robot.
+            y (float): y speed (m/s). Positive "to the left" of the robot.
+            rot (float): rotational speed (rad/s). Positive counter-clock wise.
+
+        """
         rot_vels = self.ik_vel(x_vel, y_vel, rot_vel)
         return [self.wheel_rot_speed_to_pwm(rot_vel) for rot_vel in rot_vels]
 
-    def ik_vel_old(self, x, y, rot):
+    def ik_vel_old(self, x: float, y: float, rot: float) -> List[float]:
         """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame)
         and outputs the PWM to apply to each of the 3 motors in an omni setup
 
@@ -576,7 +657,6 @@ class ZuuuHAL(Node):
             y (float): y speed (between -1 and 1). Positive "to the left" of the robot.
             rot (float): rotational speed (between -1 and 1). Positive counter-clock wise.
         """
-
         cycle_back = -y + rot
         cycle_right = (-y*np.cos(120*np.pi/180)) + \
             (x*np.sin(120*np.pi/180)) + rot
@@ -590,7 +670,7 @@ class ZuuuHAL(Node):
     # 13.4 Odometry
     # /!\ Our robot frame is different. Matching between their names (left) and ours (right):
     # xb=y, yb=-x, theta=-theta, u1=uB, u2=uL, u3=uR
-    def ik_vel(self, x_vel, y_vel, rot_vel):
+    def ik_vel(self, x_vel: float, y_vel: float, rot_vel: float) -> List[float]:
         """Takes 2 linear speeds and 1 rot speed (robot's egocentric frame) and outputs the rotational speed (rad/s)
         of each of the 3 motors in an omni setup
 
@@ -610,7 +690,7 @@ class ZuuuHAL(Node):
 
         return [wheel_rot_speed_back, wheel_rot_speed_right, wheel_rot_speed_left]
 
-    def dk_vel(self, rot_l, rot_r, rot_b):
+    def dk_vel(self, rot_l: float, rot_r: float, rot_b: float) -> float:
         """Takes the 3 rotational speeds (in rpm) of the 3 wheels and outputs the x linear speed (m/s),
         y linear speed (m/s) and rotational speed (rad/s) in the robot egocentric frame
 
@@ -632,7 +712,9 @@ class ZuuuHAL(Node):
 
         return [x_vel, y_vel, theta_vel]
 
-    def filter_speed_goals(self):
+    def filter_speed_goals(self) -> List[float]:
+        """Applies a smoothing filter on x_vel_goal, y_vel_goal and theta_vel_goal
+        """
         self.x_vel_goal_filtered = (self.x_vel_goal +
                                     self.smoothing_factor*self.x_vel_goal_filtered)/(1+self.smoothing_factor)
         self.y_vel_goal_filtered = (self.y_vel_goal +
@@ -645,7 +727,9 @@ class ZuuuHAL(Node):
             self.theta_vel_goal_filtered = self.lidar_safety.safety_check_speed_command(
                 self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
 
-    def format_measurements(self, measurements):
+    def format_measurements(self, measurements) -> str:
+        """Text formatting for the low level controller measurements
+        """
         if measurements is None:
             return "None"
         to_print = ""
@@ -675,7 +759,9 @@ class ZuuuHAL(Node):
         to_print += "time_ms:{}\n".format(measurements.time_ms)
         return to_print
 
-    def print_all_measurements(self):
+    def print_all_measurements(self) -> None:
+        """Prints the low level measurements from the 3 wheel controllers
+        """
         to_print = "\n*** back_wheel measurements:\n"
         to_print += self.format_measurements(
             self.omnibase.back_wheel_measurements)
@@ -695,7 +781,9 @@ class ZuuuHAL(Node):
         self.get_logger().info("{}".format(to_print))
         # 20 tours en 35s, avg_rpm ~=34
 
-    def publish_wheel_speeds(self):
+    def publish_wheel_speeds(self) -> None:
+        """Publishes the most recent measure of rotational speed for each of the 3 wheels on 3 separate topics.
+        """
         # If the measurements are None, not publishing
         if self.omnibase.back_wheel_measurements is not None:
             rpm_back = Float32()
@@ -712,7 +800,10 @@ class ZuuuHAL(Node):
             rpm_right.data = float(self.omnibase.right_wheel_measurements.rpm)
             self.pub_right_wheel_rpm.publish(rpm_right)
 
-    def update_wheel_speeds(self):
+    def update_wheel_speeds(self) -> None:
+        """Uses the latest mesure of wheel rotational speed to update the smoothed internal estimation of the wheel
+        rotational speed
+        """
         # Keeping a local value of the wheel speeds to handle None measurements (we'll use the last valid measure)
         if self.omnibase.back_wheel_measurements is not None:
             value = float(
@@ -744,7 +835,10 @@ class ZuuuHAL(Node):
         else:
             self.omnibase.right_wheel_nones += 1
 
-    def publish_odometry_and_tf(self):
+    def publish_odometry_and_tf(self) -> None:
+        """Publishes the current odometry position (Odometry type published on the /odom topic) and also
+        published the TransformStamped between the frame base_footprint and odom
+        """
         # Odom
         odom = Odometry()
         odom.header.frame_id = "odom"
@@ -790,7 +884,10 @@ class ZuuuHAL(Node):
 
         self.br.sendTransform(t)
 
-    def tick_odom(self):
+    def tick_odom(self) -> None:
+        """Updates the odometry values based on the small displacement measured since the last tick, 
+        then published the results with publish_odometry_and_tf()
+        """
         # TODO VESC speed values are, as is normal, very noisy at low speeds.
         # We have no control on how the speeds are calculated as is.
         # -> By reading the encoder ticks directly and making the calculations here we could make this a tad better.
@@ -830,8 +927,9 @@ class ZuuuHAL(Node):
                 self.goto_service_on = False
         self.publish_odometry_and_tf()
 
-    def limit_duty_cycles(self, duty_cycles):
-        # Between +- max_duty_cyle
+    def limit_duty_cycles(self, duty_cycles: List[float]) -> List[float]:
+        """Limits the duty cycles to stay in +-max_duty_cyle
+        """
         for i in range(len(duty_cycles)):
             if duty_cycles[i] < 0:
                 duty_cycles[i] = max(-self.max_duty_cyle, duty_cycles[i])
@@ -839,8 +937,9 @@ class ZuuuHAL(Node):
                 duty_cycles[i] = min(self.max_duty_cyle, duty_cycles[i])
         return duty_cycles
 
-    def limit_wheel_speeds(self, wheel_speeds):
-        # Between +- max_wheel_speed
+    def limit_wheel_speeds(self, wheel_speeds: List[float]) -> List[float]:
+        """Limits the wheel speeds to stay in +-max_wheel_speed
+        """
         for i in range(len(wheel_speeds)):
             if wheel_speeds[i] < 0:
                 wheel_speeds[i] = max(-self.max_wheel_speed, wheel_speeds[i])
@@ -849,7 +948,9 @@ class ZuuuHAL(Node):
                     self.max_wheel_speed, wheel_speeds[i])
         return wheel_speeds
 
-    def read_measurements(self):
+    def read_measurements(self) -> None:
+        """Calls the low level functions to read the measurements on the 3 wheel controllers
+        """
         self.omnibase.read_all_measurements()
         if self.omnibase.back_wheel_measurements is not None:
             self.battery_voltage = self.omnibase.back_wheel_measurements.v_in
@@ -872,7 +973,8 @@ class ZuuuHAL(Node):
         self.nb_full_com_fails = 0
         self.measurements_t = time.time()
 
-    def send_wheel_commands(self, wheel_speeds):
+    def send_wheel_commands(self, wheel_speeds: List[float]) -> None:
+        """Sends either a PWM command or a speed command to the wheel controllers, based on the current control mode"""
         if self.control_mode is ZuuuControlModes.OPEN_LOOP:
             duty_cycles = [self.wheel_rot_speed_to_pwm(
                 wheel_speed) for wheel_speed in wheel_speeds]
@@ -895,7 +997,10 @@ class ZuuuHAL(Node):
         else:
             self.get_logger().warning("unknown control mode '{}'".format(self.control_mode))
 
-    def position_control(self):
+    def position_control(self) -> List[float]:
+        """Calculates the speed targets to be sent on x, y and theta to reach their respective goals during a GoTo
+        This function uses 3 separate PIDs controllers.
+        """
         x_command_odom = self.x_pid.tick(self.x_odom)
         y_command_odom = self.y_pid.tick(self.y_odom)
         theta_command_odom = self.theta_pid.tick(
@@ -910,11 +1015,13 @@ class ZuuuHAL(Node):
 
         return x_command, y_command, theta_command_odom
 
-    def stop_ongoing_services(self):
+    def stop_ongoing_services(self) -> None:
+        """Stops the GoTo and the SetSpeed services, if they were running"""
         self.goto_service_on = False
         self.speed_service_on = False
 
-    def main_tick(self, verbose=False):
+    def main_tick(self, verbose: bool = False):
+        """Main function of the HAL node. This function is made to be called often. Handles the main state machine"""
         t = time.time()
         if (not self.scan_is_read) or ((t - self.scan_t0) > self.scan_timeout):
             # If too much time without a LIDAR scan, the speeds are set to 0 for safety.
@@ -1019,7 +1126,8 @@ class ZuuuHAL(Node):
                 "zuuu tick potential freq: {:.0f}Hz (dt={:.0f}ms)".format(f, 1000*dt))
 
 
-def main(args=None):
+def main(args=None) -> None:
+    """Run ZuuuHAL main loop"""
     rclpy.init(args=args)
     try:
         node = ZuuuHAL()
