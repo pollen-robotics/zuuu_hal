@@ -46,7 +46,7 @@ else:
 msg = """
 Modified version of the default ROS2 keyboard teleop node.
 This node takes keypresses from the keyboard and publishes them
-as Twist messages. It works best with an AZERTY keyboard with a 
+as Twist messages. It works best with an AZERTY keyboard with a
 pad num layout :)
 
 Holonomic mode (translations only):
@@ -58,8 +58,8 @@ Holonomic mode (translations only):
 a  : counter-clock wise rotation
 e  : clock wise rotation
 
-+- : increase/decrease only linear speed by 5% (additive)
-*/ : increase/decrease only angular speed by 5% (additive)
++- : increase/decrease only linear speed (additive) +-0.05m/s
+*/ : increase/decrease only angular speed (additive) +-0.2rad/s
 
 Anything else : stop
 
@@ -86,8 +86,8 @@ linSpeedBindings = {
 }
 
 rotSpeedBindings = {
-    '*': 0.05,
-    '/': -0.05,
+    '*': 0.2,
+    '/': -0.2,
 }
 
 
@@ -123,8 +123,8 @@ def main():
     node = rclpy.create_node('teleop_twist_keyboard')
     pub = node.create_publisher(geometry_msgs.msg.Twist, 'cmd_vel', 10)
 
-    lin_speed = 0.2
-    rot_speed = 0.15
+    lin_speed = 0.5
+    rot_speed = 2.0
     turn = 1.0
     x = 0.0
     y = 0.0
@@ -157,8 +157,9 @@ def main():
             x = x * lin_speed
             y = y * lin_speed
             th = th * rot_speed
-            print("\nx_vel: {:.1f}%, y_vel: {:.1f}%, theta_vel: {:.1f}%.\nMax lin_vel: {:.1f}%, max rot_vel: {:.1f}%".format(
-                x*100, y*100, th*100, lin_speed*100, rot_speed*100))
+            print("\nx_vel: {:.2f}m/s, y_vel: {:.2f}m/s, theta_vel: {:.2f}rad/s.\n"
+                  "Max lin_vel: {:.2f}m/s, max rot_vel: {:.2f}rad/s".format(
+                      x, y, th, lin_speed, rot_speed))
 
             twist = geometry_msgs.msg.Twist()
             twist.linear.x = x

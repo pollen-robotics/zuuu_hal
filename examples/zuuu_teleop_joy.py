@@ -12,16 +12,22 @@ import traceback
 import sys
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 
+import os
+
+# To be able to use pygame in "headless" mode
+# set SDL to use the dummy NULL video driver, so it doesn't need a windowing system.
+os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 msg = """
 This node takes inputs from a controller and publishes them
-as Twist messages. Tested on a SONY Dual shock 4 controller.
+as Twist messages in SI units. Tested on a SONY Dual shock 4 controller
+and an XBOX controller.
 
 Left joy: holonomic translations
-Right joy: rotation 
+Right joy: rotation
 
-L2/L1 : increase/decrease only linear speed by 5% (additive)
-R2/R1 : increase/decrease only angular speed by 5% (additive)
+L2/L1 : increase/decrease only linear speed (additive) +-0.05m/s
+R2/R1 : increase/decrease only angular speed (additive) +-0.2rad/s
 
 CTRL-C  or press CIRCLE on the controller to quit
 """
@@ -53,7 +59,8 @@ CTRL-C  or press CIRCLE on the controller to quit
 # Button  8 = big central button
 # LT and RT are axis (like a joy)
 
-# When using the XBOX controller, most of it is the same, except that you must use Start and Back to increase the max speeds.
+# When using the XBOX controller, most of it is the same,
+# except that you must use Start and Back to increase the max speeds.
 
 
 def sign(x):
@@ -69,6 +76,7 @@ class JoyTeleop(Node):
         self.get_logger().info("Starting zuuu_teleop_joy!")
 
         pygame.init()
+        pygame.display.init()
         pygame.joystick.init()
 
         self.nb_joy = pygame.joystick.get_count()
@@ -77,9 +85,10 @@ class JoyTeleop(Node):
             self.emergency_shutdown()
         self.get_logger().info("nb joysticks: {}".format(self.nb_joy))
         self.j = pygame.joystick.Joystick(0)
-        self.lin_speed_ratio = 0.2
-        self.rot_speed_ratio = 0.15
-        # The joyticks dont come back at a perfect 0 position when released. Any abs(value) below min_joy_position will be assumed to be 0
+        self.lin_speed_ratio = 0.5
+        self.rot_speed_ratio = 2.0
+        # The joyticks dont come back at a perfect 0 position when released.
+        # Any abs(value) below min_joy_position will be assumed to be 0
         self.min_joy_position = 0.03
         self.pub = self.create_publisher(
             geometry_msgs.msg.Twist, 'cmd_vel', 10)
@@ -108,21 +117,21 @@ class JoyTeleop(Node):
                     self.get_logger().warn("Pressed emergency stop!")
                     self.emergency_shutdown()
                 if self.j.get_button(6):  # l2
-                    self.lin_speed_ratio = min(1.0, self.lin_speed_ratio+0.05)
-                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(
-                        self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+                    self.lin_speed_ratio = min(3.0, self.lin_speed_ratio+0.05)
+                    self.get_logger().info("max translational speed: {:.1f}m/s, max rotational speed: {:.1f}rad/s"
+                                           .format(self.lin_speed_ratio*100, self.rot_speed_ratio*100))
                 if self.j.get_button(7):  # r2
-                    self.rot_speed_ratio = min(1.0, self.rot_speed_ratio+0.05)
-                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(
-                        self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+                    self.rot_speed_ratio = min(12.0, self.rot_speed_ratio+0.2)
+                    self.get_logger().info("max translational speed: {:.1f}m/s, max rotational speed: {:.1f}rad/s"
+                                           .format(self.lin_speed_ratio*100, self.rot_speed_ratio*100))
                 if self.j.get_button(4):  # l1
                     self.lin_speed_ratio = max(0.0, self.lin_speed_ratio-0.05)
-                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(
-                        self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+                    self.get_logger().info("max translational speed: {:.1f}m/s, max rotational speed: {:.1f}rad/s"
+                                           .format(self.lin_speed_ratio*100, self.rot_speed_ratio*100))
                 if self.j.get_button(5):  # r1
-                    self.rot_speed_ratio = max(0.0, self.rot_speed_ratio-0.05)
-                    self.get_logger().info("max translational speed: {:.1f}%, max rotational speed: {:.1f}%".format(
-                        self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+                    self.rot_speed_ratio = max(0.0, self.rot_speed_ratio-0.2)
+                    self.get_logger().info("max translational speed: {:.1f}m/s, max rotational speed: {:.1f}rad/s"
+                                           .format(self.lin_speed_ratio*100, self.rot_speed_ratio*100))
             elif event.type == pygame.JOYBUTTONUP:
                 pass
 
@@ -180,6 +189,7 @@ class JoyTeleop(Node):
         return x, y, rot
 
     def main_tick(self):
+        self.get_logger().info("Tick!!")
         self.tick_controller()
         x, y, theta = self.speeds_from_joystick()
         twist = geometry_msgs.msg.Twist()
@@ -190,8 +200,9 @@ class JoyTeleop(Node):
         twist.angular.y = 0.0
         twist.angular.z = theta
         self.pub.publish(twist)
-        self.get_logger().info("\nx_vel: {:.1f}%, y_vel: {:.1f}%, theta_vel: {:.1f}%.\nMax lin_vel: {:.1f}%, max rot_vel: {:.1f}%".format(
-            x*100, y*100, theta*100, self.lin_speed_ratio*100, self.rot_speed_ratio*100))
+        self.get_logger().info("\nx_vel: {:.2f}m/s, y_vel: {:.2f}m/s, theta_vel: {:.2f}rad/s.\n"
+                               "Max lin_vel: {:.2f}m/s, max rot_vel: {:.2f}rad/s".format(
+                                   x, y, theta, self.lin_speed_ratio, self.rot_speed_ratio))
         # self.print_controller()
         # time.sleep(1.0)
 

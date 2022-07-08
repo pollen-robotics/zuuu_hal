@@ -18,7 +18,7 @@ def generate_launch_description():
                 os.path.join(rplidar_launch_dir, 'view_rplidar_s2_launch.py')),
         ),
         Node(
-            package='zuuu_follow_me',
+            package='zuuu_hal',
             namespace='follow_me',
             executable='follow_me',
             name='follow_me'
