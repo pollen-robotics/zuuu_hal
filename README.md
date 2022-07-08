@@ -18,8 +18,7 @@ colcon build --packages-select zuuu_hal
 source ~/.bashrc
 ```
 
-Clone and install **our custom version of PyVESC:**
-
+Clone and install **our custom version of PyVESC**:
 ```
 cd ~/dev
 git clone https://github.com/pollen-robotics/PyVESC.git
@@ -42,6 +41,9 @@ colcon build --packages-select zuuu_hal
 source ~/.bashrc
 ```
 * [zuuu_description](https://github.com/pollen-robotics/zuuu_description.git): if you want to use visualization tools (e.g. rviz, gazebo)
+```
+git clone https://github.com/pollen-robotics/zuuu_interfaces
+```
 
 For the installation of this package, refer to the [dedicated README](https://github.com/pollen-robotics/zuuu_description).
 
@@ -143,7 +145,6 @@ Alternatively, this launch file runs both the HAL, the lidar node, RViz and Zuuu
 ```
 ros2 launch zuuu_description zuuu_bringup.launch.py
 ```
-
 
 ### Parameters
 The parameter configuration file is in ```config/params.yaml```. 
