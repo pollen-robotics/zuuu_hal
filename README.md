@@ -1,6 +1,6 @@
 # Zuuu Hardware Abstraction Layer
 ## Purpose
-Zuuu HAL has the responsability to interact with Zuuu's hardware and 'ROSify' the inputs and outputs.
+Zuuu HAL has the responsability to interact with Zuuu's (Reachy's mobile base) hardware and 'ROSify' the inputs and outputs.
 
 The HAL will periodically read the selected measurements from the controllers of the wheels (speed, temperature, voltage, etc) 
 and publish them into the adequate topics or services. The odometry is calculated and published (/odom topic and TF transform).
@@ -9,16 +9,20 @@ Several interfaces to control the mobile base are exposed such as sending (x_vel
 
 
 ## Installation
-Clone this repository
+Clone and install this repository
 ```
-git clone https://github.com/pollen-robotics/zuuu_follow_me.git
+cd ~/reachy_ws/src
+git clone https://github.com/pollen-robotics/zuuu_hal.git
+cd ~/reachy_ws
+colcon build --packages-select zuuu_hal
+source ~/.bashrc
 ```
 
 Clone and install **our custom version of PyVESC:**
 
-https://github.com/pollen-robotics/PyVESC
-
 ```
+cd ~/dev
+git clone https://github.com/pollen-robotics/PyVESC.git
 pip3 install -e PyVESC/
 ```
 
@@ -29,11 +33,15 @@ pip3 install transforms3d
 ```
 
 ## Dependencies
-* zuuu_interfaces: defines custom services for the mobile base
+* [zuuu_interfaces](https://github.com/pollen-robotics/zuuu_interfaces): defines custom services for the mobile base
 ```
-git clone https://github.com/pollen-robotics/zuuu_interfaces
+cd ~/reachy_ws/src
+git clone https://github.com/pollen-robotics/zuuu_interfaces.git
+cd ~/reachy_ws
+colcon build --packages-select zuuu_hal
+source ~/.bashrc
 ```
-* zuuu_description: if you want to use visualization tools (e.g. rviz, gazebo)
+* [zuuu_description](https://github.com/pollen-robotics/zuuu_description.git): if you want to use visualization tools (e.g. rviz, gazebo)
 
 For the installation of this package, refer to the [dedicated README](https://github.com/pollen-robotics/zuuu_description).
 
@@ -43,6 +51,9 @@ For all ROS based use cases, the zuuu_hal node must be running :
 ```
 ros2 launch zuuu_hal hal.launch.py
 ```
+
+### Running the HAL and the Mobile base SDK server
+If you want to use our [Python SDK](https://github.com/pollen-robotics/mobile-base-sdk) to control the mobile base with Python commands instead of working at the ROS level, you will have to launch both the HAL and the Mobile base SDK server. See *run_mobile_base_sdk_server_and_hal.launch.py* from the [mobile base SDk server](https://github.com/pollen-robotics/mobile_base_sdk_server) for this.
 
 ### Sending speed commands
 Once the zuuu_hal is started, one can take control of the mobile base with:
@@ -198,3 +209,7 @@ Fu = 2.3 Hz => Tu = 0.4348 s
 https://en.wikipedia.org/wiki/Ziegler%E2%80%93Nichols_method
 
 
+---
+This package is part of the July 2022's ROS2-based software release of the mobile base working with Reachy 2021.
+
+Visit [pollen-robotics.com](https://pollen-robotics.com) to learn more or join our [Dicord community](https://discord.com/invite/Kg3mZHTKgs) if you have any questions or want to share your ideas.
