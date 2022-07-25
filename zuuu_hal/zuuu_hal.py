@@ -30,6 +30,8 @@ from enum import Enum
 from collections import deque
 from csv import writer
 from typing import List
+from subprocess import check_output
+
 
 import rclpy
 import rclpy.logging
@@ -92,7 +94,7 @@ class MobileBase:
         serial_port: str = '/dev/vesc_wheels',
         left_wheel_id: int = 24,
         right_wheel_id: int = 72,
-        back_wheel_id: int = None,
+        back_wheel_id: int = 116,
     ) -> None:
 
         params = [
@@ -149,7 +151,20 @@ class ZuuuHAL(Node):
         """
         super().__init__('zuuu_hal')
         self.get_logger().info("Starting zuuu_hal!")
-        self.omnibase = MobileBase()
+        self.zuuu_model = check_output(['reachy-identify-zuuu-model']).strip().decode()
+        try:
+            float_model = float(self.zuuu_model)
+            if float_model < 1.0:
+                self.omnibase = MobileBase(left_wheel_id=24, right_wheel_id=72, back_wheel_id=None)
+            else:
+                self.omnibase = MobileBase(left_wheel_id=24, right_wheel_id=None, back_wheel_id=116)
+        except Exception:
+            msg = "ZUUU version can't be processed, check that the 'zuuu_model' tag is "\
+                "present in the .reachy.yaml file"
+            self.get_logger().error(msg)
+            self.get_logger().error(traceback.format_exc())
+            raise RuntimeError(msg)
+
         self.get_logger().info(
             "Reading Zuuu's sensors once...")
         self.read_measurements()
