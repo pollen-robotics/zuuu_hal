@@ -91,8 +91,8 @@ class MobileBase:
         self,
         serial_port: str = '/dev/vesc_wheels',
         left_wheel_id: int = 24,
-        right_wheel_id: int = 72,
-        back_wheel_id: int = None,
+        right_wheel_id: int = None,
+        back_wheel_id: int = 116,
     ) -> None:
 
         params = [
@@ -119,14 +119,19 @@ class MobileBase:
         self.battery_cell_warn_voltage = 3.5
         self.battery_cell_min_voltage = 3.3
         self.battery_nb_cells = 7
-        self.battery_check_period = 60
+        self.battery_check_period = 1
+        self.vesc_counter=0
 
     def read_all_measurements(self) -> None:
         """Reads all the measurements for the left, right and back wheels
         """
-        self.left_wheel_measurements = self.left_wheel.get_measurements()
-        self.right_wheel_measurements = self.right_wheel.get_measurements()
-        self.back_wheel_measurements = self.back_wheel.get_measurements()
+        self.vesc_counter = (self.vesc_counter+1)%3
+        if self.vesc_counter == 0:
+            self.left_wheel_measurements = self.left_wheel.get_measurements()
+        elif self.vesc_counter == 1:
+            self.right_wheel_measurements = self.right_wheel.get_measurements()
+        else :
+            self.back_wheel_measurements = self.back_wheel.get_measurements()
 
     def deque_to_avg(self, deque: deque) -> float:
         """Returns the average of the values contained in deque
@@ -148,6 +153,8 @@ class ZuuuHAL(Node):
         Low level side: connecting with the hardware and making a first read of the sensors
         """
         super().__init__('zuuu_hal')
+        self.max_full_com_fails = 1000
+        self.nb_full_com_fails = 0
         self.get_logger().info("Starting zuuu_hal!")
         self.omnibase = MobileBase()
         self.get_logger().info(
@@ -523,7 +530,7 @@ class ZuuuHAL(Node):
         response.success = True
         return response
 
-    def check_battery(self, verbose: bool = False) -> None:
+    def check_battery(self, verbose: bool = True) -> None:
         """Checks that the battery readings are not too old and forces a read if need be.
         Checks that the battery voltages are safe and warns or stops the HAL accordingly.
         """
@@ -951,6 +958,7 @@ class ZuuuHAL(Node):
     def read_measurements(self) -> None:
         """Calls the low level functions to read the measurements on the 3 wheel controllers
         """
+        self.nb_full_com_fails = 0
         self.omnibase.read_all_measurements()
         if self.omnibase.back_wheel_measurements is not None:
             self.battery_voltage = self.omnibase.back_wheel_measurements.v_in
@@ -1022,6 +1030,7 @@ class ZuuuHAL(Node):
 
     def main_tick(self, verbose: bool = False):
         """Main function of the HAL node. This function is made to be called often. Handles the main state machine"""
+        self.get_logger().info("=> TIIIIIICK  **")
         t = time.time()
         if (not self.scan_is_read) or ((t - self.scan_t0) > self.scan_timeout):
             # If too much time without a LIDAR scan, the speeds are set to 0 for safety.
