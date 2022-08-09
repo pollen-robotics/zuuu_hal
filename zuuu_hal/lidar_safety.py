@@ -1,3 +1,4 @@
+import os
 import math
 import traceback
 from subprocess import check_output
@@ -31,7 +32,7 @@ class LidarSafety:
         self.critical_angles = []
         self.at_least_one_critical = False
         self.logger = logger
-        zuuu_model = check_output(['reachy-identify-zuuu-model']).strip().decode()
+        zuuu_model = check_output(os.path.expanduser('~')+'/.local/bin/reachy-identify-zuuu-model').strip().decode()
         # Not using the TF transforms because this is faster
         # TODO use a static TF2 transform instead
         try:

@@ -20,6 +20,7 @@
     See params.yaml for the list of ROS parameters.
 """
 
+import os
 import time
 import math
 import numpy as np
@@ -151,7 +152,9 @@ class ZuuuHAL(Node):
         """
         super().__init__('zuuu_hal')
         self.get_logger().info("Starting zuuu_hal!")
-        self.zuuu_model = check_output(['reachy-identify-zuuu-model']).strip().decode()
+        self.zuuu_model = check_output(
+            os.path.expanduser('~')+'/.local/bin/reachy-identify-zuuu-model'
+            ).strip().decode()
         try:
             float_model = float(self.zuuu_model)
             if float_model < 1.0:
