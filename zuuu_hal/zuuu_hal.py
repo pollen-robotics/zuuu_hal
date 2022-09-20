@@ -152,9 +152,10 @@ class ZuuuHAL(Node):
         """
         super().__init__('zuuu_hal')
         self.get_logger().info("Starting zuuu_hal!")
-        self.zuuu_model = check_output(
-            os.path.expanduser('~')+'/.local/bin/reachy-identify-zuuu-model'
-            ).strip().decode()
+        self.zuuu_model = "1.0"
+        # check_output(
+        #     os.path.expanduser('~')+'/.local/bin/reachy-identify-zuuu-model'
+        #     ).strip().decode()
         try:
             float_model = float(self.zuuu_model)
             if float_model < 1.0:
@@ -618,6 +619,7 @@ class ZuuuHAL(Node):
         # LIDAR safety management
         self.lidar_safety.clear_measures()
         if self.safety_on:
+            # None
             self.lidar_safety.process_scan(filtered_scan)
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot: float) -> float:
