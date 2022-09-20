@@ -25,9 +25,15 @@ git clone https://github.com/pollen-robotics/PyVESC.git
 pip3 install -e PyVESC/
 ```
 
-Install:
+Install (Foxy):
 ```
 sudo apt install ros-foxy-tf-transformations
+pip3 install transforms3d
+```
+
+Install (Galactic):
+```
+sudo apt install ros-galactic-tf-transformations
 pip3 install transforms3d
 ```
 
