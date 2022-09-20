@@ -160,6 +160,12 @@ Usage example to dynamically change the LIDAR angular limits:
 ros2 param set /zuuu_hal laser_lower_angle -0.1
 ```
 
+Read the current control_mode and set it to PID (valid inputs are PID and OPEN_LOOP)
+```
+ros2 param get /zuuu_hal control_mode
+ros2 param set /zuuu_hal control_mode PID
+```
+
 :warning: The node should always be run with its parameter file. The node will crash if the parameter file is not present at launch time (use the ```hal.launch.py``` launch file and it should work fine)
 
 ### Setting the drive mode
