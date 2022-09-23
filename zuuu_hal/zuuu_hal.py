@@ -1125,7 +1125,7 @@ class ZuuuHAL(Node):
                 x_vel, y_vel, theta_vel)
             self.send_wheel_commands(wheel_speeds)
         elif self.mode is ZuuuModes.CMD_GOTO:
-            TODO add that a cmmand of 0, 0, 0 is equivalent to a go to to where the robot is now.
+            # TODO add that a cmmand of 0, 0, 0 is equivalent to a go to to where the robot is now.
             self.nb_control_ticks += 1
             if self.nb_control_ticks % 2 == 0:
                 # The idea behind not updating the goals every tick, is to give some time to the control loop to react to perturbations before creating a new goal pos
