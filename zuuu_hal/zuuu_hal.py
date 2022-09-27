@@ -358,8 +358,8 @@ class ZuuuHAL(Node):
         self.t0 = time.time()
         self.read_measurements()
         self.first_tick = True
-        self.only_x=True
-        self.theta_null=True
+        self.only_x = True
+        self.theta_null = True
         self.save_odom_checkpoint_xy()
         self.save_odom_checkpoint_theta()
 
@@ -950,7 +950,7 @@ class ZuuuHAL(Node):
                 self.goto_service_on = False
         self.publish_odometry_and_tf()
 
-    def reset_odom_now(self) :
+    def reset_odom_now(self):
         self.x_odom = 0.0
         self.y_odom = 0.0
         self.theta_odom = 0.0
@@ -1048,26 +1048,26 @@ class ZuuuHAL(Node):
         self.goto_service_on = False
         self.speed_service_on = False
 
-    def did_mode_change(self, dx, dy, dtheta) :
+    def did_mode_change(self, dx, dy, dtheta):
         almost_zero = 0.05
-        if self.only_x :
-            if abs(dy) > almost_zero :
+        if self.only_x:
+            if abs(dy) > almost_zero:
                 self.only_x = False
                 return True
-        else :
-            if abs(dx) > almost_zero :
+        else:
+            if abs(dx) > almost_zero:
                 self.only_x = True
                 return True
         return False
     # TODO. Attention! Nul. 100% il y a des bugs de l'enfer. A réfléchir.
-    def save_odom_checkpoint_xy(self) :
+
+    def save_odom_checkpoint_xy(self):
         self.x_odom_checkpoint = self.x_odom
         self.y_odom_checkpoint = self.y_odom
         self.theta_odom_checkpoint = self.theta_odom
-    
-    def save_odom_checkpoint_theta(self) :
-        self.theta_odom_special_checkpoint = self.theta_odom
 
+    def save_odom_checkpoint_theta(self):
+        self.theta_odom_special_checkpoint = self.theta_odom
 
     def fake_vel_goals_to_goto_goals(self, x_vel_goal, y_vel_goal, theta_vel_goal):
         # TODO : tune this (linear)
@@ -1077,14 +1077,16 @@ class ZuuuHAL(Node):
         mode_changed = self.did_mode_change(dx, dy, dtheta)
         almost_zero = 0.05
 
-        if mode_changed :
+        if mode_changed:
             self.save_odom_checkpoint_xy()
-        
-        if self.only_x :
+
+        if self.only_x:
             self.x_goal = self.x_odom+(dx * math.cos(self.theta_odom) - dy*math.sin(self.theta_odom))
-            self.y_goal = self.y_odom_checkpoint+(dx * math.sin(self.theta_odom_checkpoint) + dy*math.cos(self.theta_odom_checkpoint))
-        else :
-            self.x_goal = self.x_odom_checkpoint+(dx * math.cos(self.theta_odom_checkpoint) - dy*math.sin(self.theta_odom_checkpoint))
+            self.y_goal = self.y_odom_checkpoint + \
+                (dx * math.sin(self.theta_odom_checkpoint) + dy*math.cos(self.theta_odom_checkpoint))
+        else:
+            self.x_goal = self.x_odom_checkpoint + \
+                (dx * math.cos(self.theta_odom_checkpoint) - dy*math.sin(self.theta_odom_checkpoint))
             self.y_goal = self.y_odom+(dx * math.sin(self.theta_odom) + dy*math.cos(self.theta_odom))
         # if abs(dy) < almost_zero :
         #     if not(self.no_y) :
@@ -1095,11 +1097,11 @@ class ZuuuHAL(Node):
         # else :
         #     if self.no_y :
         #         mode_changed=True
-        #         self.reset_odom_now() 
+        #         self.reset_odom_now()
         #     self.no_y = False
         #     self.y_goal = self.y_odom+(dx * math.sin(self.theta_odom) + dy *
         #                             math.cos(self.theta_odom))
-        
+
         # if abs(dx) < almost_zero :
         #     if not(self.no_x) :
         #         mode_changed=True
@@ -1109,7 +1111,7 @@ class ZuuuHAL(Node):
         # else :
         #     if self.no_x :
         #         mode_changed=True
-        #         self.reset_odom_now() 
+        #         self.reset_odom_now()
         #     self.no_x = False
         #     self.x_goal = self.x_odom+(dx * math.cos(self.theta_odom) - dy *
         #                            math.sin(self.theta_odom))
@@ -1117,23 +1119,22 @@ class ZuuuHAL(Node):
         # Always in odom frame
         # self.theta_goal += dtheta/100.0
 
-        if self.theta_null :
-            if abs(dtheta) > almost_zero :
-                self.theta_null=False
-        else :
-            if abs(dtheta) <= almost_zero :
-                self.theta_null=True
+        if self.theta_null:
+            if abs(dtheta) > almost_zero:
+                self.theta_null = False
+        else:
+            if abs(dtheta) <= almost_zero:
+                self.theta_null = True
                 self.reset_odom_now()
                 self.save_odom_checkpoint_xy()
 
-        if self.theta_null :
+        if self.theta_null:
             self.theta_goal = self.theta_odom_checkpoint
-        else :
-            #V0 no smart correction, everything is open
+        else:
+            # V0 no smart correction, everything is open
             self.theta_goal = self.theta_odom+dtheta
             self.x_goal = self.x_odom+(dx * math.cos(self.theta_odom) - dy*math.sin(self.theta_odom))
             self.y_goal = self.y_odom+(dx * math.sin(self.theta_odom) + dy*math.cos(self.theta_odom))
-
 
         self.x_pid.set_goal(self.x_goal)
         self.y_pid.set_goal(self.y_goal)
@@ -1207,39 +1208,29 @@ class ZuuuHAL(Node):
                 x_vel, y_vel, theta_vel)
             self.send_wheel_commands(wheel_speeds)
         elif self.mode is ZuuuModes.CMD_GOTO:
-            # TODO add that a cmmand of 0, 0, 0 is equivalent to a go to to where the robot is now.
-            self.nb_control_ticks += 1
-            if self.nb_control_ticks % 1 == 0:
-                # The idea behind not updating the goals every tick, is to give some time to the control loop to react to perturbations before creating a new goal pos
-                # Skipping 0 ticks should be identical to the CMD_VEL although based on my tests, I believe it's slighthly different because the odometry is ticked on its own
-                # and sometimes it can have an impact on "the same tick".
-                # If too much time without an order, the speeds are smoothed back to 0 for safety.
-                if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
-                    x_vel_goal = self.cmd_vel.linear.x
-                    y_vel_goal = self.cmd_vel.linear.y
-                    theta_vel_goal = self.cmd_vel.angular.z
-                else:
-                    x_vel_goal = 0.0
-                    y_vel_goal = 0.0
-                    theta_vel_goal = 0.0
+            if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
+                # Normal case, orders where received
+                x_vel_goal = self.cmd_vel.linear.x
+                y_vel_goal = self.cmd_vel.linear.y
+                theta_vel_goal = self.cmd_vel.angular.z
                 self.fake_vel_goals_to_goto_goals(x_vel_goal, y_vel_goal, theta_vel_goal)
 
-            distance = math.sqrt(
-                (self.x_goal - self.x_odom)**2 +
-                (self.y_goal - self.y_odom)**2
-            )
-            # if distance < self.xy_tol and abs(angle_diff(self.theta_goal, self.theta_odom)) < self.theta_tol:
-            #     x_vel, y_vel, theta_vel = 0, 0, 0
-            # else:
-            #     x_vel, y_vel, theta_vel = self.position_control()
-            x_vel, y_vel, theta_vel = self.position_control()
-            
+                x_vel, y_vel, theta_vel = self.position_control()
 
-            x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
-                x_vel, y_vel, theta_vel)
-            wheel_speeds = self.ik_vel(
-                x_vel, y_vel, theta_vel)
-            self.send_wheel_commands(wheel_speeds)
+                x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
+                    x_vel, y_vel, theta_vel)
+                wheel_speeds = self.ik_vel(
+                    x_vel, y_vel, theta_vel)
+                self.send_wheel_commands(wheel_speeds)
+            else:
+                # If too much time without an order, the speeds are smoothed back to 0 for safety.
+                self.x_vel_goal = 0.0
+                self.y_vel_goal = 0.0
+                self.theta_vel_goal = 0.0
+                self.filter_speed_goals()
+                wheel_speeds = self.ik_vel(
+                    self.x_vel_goal_filtered, self.y_vel_goal_filtered, self.theta_vel_goal_filtered)
+                self.send_wheel_commands(wheel_speeds)
 
         elif self.mode is ZuuuModes.EMERGENCY_STOP:
             msg = "Emergency stop requested"
