@@ -266,7 +266,7 @@ class ZuuuHAL(Node):
         self.theta_goal = 0.0
         self.reset_odom = False
         self.battery_voltage = 25.0
-        self.mode = ZuuuModes.CMD_VEL
+        self.mode = ZuuuModes.CMD_GOTO
         self.speed_service_deadline = 0
         self.speed_service_on = False
         self.goto_service_on = False
@@ -274,6 +274,7 @@ class ZuuuHAL(Node):
         self.scan_is_read = False
         self.scan_timeout = 0.5
         self.nb_control_ticks = 0
+        self.stationary_on = False
         self.lidar_safety = LidarSafety(
             self.safety_distance, self.critical_distance, robot_collision_radius=0.5,
             speed_reduction_factor=0.88, logger=self.get_logger())
@@ -360,8 +361,14 @@ class ZuuuHAL(Node):
         self.first_tick = True
         self.only_x = True
         self.theta_null = True
+        self.joy_angle = 0.0
+        self.joy_intesity = 0.0
+        self.joy_rotation_on = False
         self.save_odom_checkpoint_xy()
         self.save_odom_checkpoint_theta()
+        self.dir_p0 = [0.0, 0.0]
+        self.dir_p1 = [1.0, 0.0]
+        self.dir_angle = 0.0
 
         self.create_timer(self.main_tick_period, self.main_tick)
         # self.create_timer(0.1, self.main_tick)
@@ -1059,86 +1066,212 @@ class ZuuuHAL(Node):
                 self.only_x = True
                 return True
         return False
-    # TODO. Attention! Nul. 100% il y a des bugs de l'enfer. A réfléchir.
+
+    def handle_joy_discretization(self, dx, dy, dtheta, almost_zero=0.001, nb_directions=8):
+        if abs(dx) < almost_zero and abs(dy) < almost_zero:
+            rotation_on = False
+            angle = 0
+            intesity = 0
+            is_stationary = True
+        else:
+            is_stationary = False
+            joy_angle = math.atan2(dy, dx)
+            intesity = math.sqrt(dx**2+dy**2)
+            angle_step = math.pi * 2 / nb_directions
+            half_angle_step = angle_step/2
+            found = False
+            for i in range(nb_directions):
+                angle = i*angle_step
+                if (abs(angle_diff(angle, joy_angle)) <= half_angle_step):
+                    # Found the discretization angle
+                    found = True
+                    break
+            if not found:
+                msg = "Impossible case in the joy discretization angle function, stopping for safety"
+                self.get_logger().error(msg)
+                self.emergency_shutdown()
+                raise RuntimeError(msg)
+
+        if abs(dtheta) < almost_zero:
+            rotation_on = False
+        else:
+            rotation_on = True
+        if self.joy_angle != angle:
+            direction_changed = True
+        else:
+            direction_changed = False
+
+        if self.joy_rotation_on != rotation_on:
+            rotation_changed = True
+        else:
+            rotation_changed = False
+        self.joy_angle = angle
+        self.joy_intesity = intesity
+        self.joy_rotation_on = rotation_on
+
+        return angle, intesity, rotation_on, direction_changed, rotation_changed, is_stationary
+
+    def save_odom_checkpoint(self):
+        self.save_odom_checkpoint_theta()
+        self.save_odom_checkpoint_xy()
 
     def save_odom_checkpoint_xy(self):
         self.x_odom_checkpoint = self.x_odom
         self.y_odom_checkpoint = self.y_odom
-        self.theta_odom_checkpoint = self.theta_odom
+        self.get_logger().info(f"XY checkpoint")
 
     def save_odom_checkpoint_theta(self):
-        self.theta_odom_special_checkpoint = self.theta_odom
+        self.theta_odom_checkpoint = self.theta_odom
+        self.get_logger().info(f"Theta checkpoint")
+
+    def save_direction_checkpoint(self, angle):
+        # Saving 2 points to save the unit vector of motion and its line
+        self.dir_p0 = [self.x_odom, self.y_odom]
+        self.dir_p1 = [self.x_odom+math.cos(angle), self.y_odom+math.sin(angle)]
+        self.dir_angle = angle
+        # self.get_logger().info(f"self.dir_p0={self.dir_p0}")
+        # self.get_logger().info(f"self.dir_p1={self.dir_p1}")
+        # self.get_logger().info(f"self.dir_angle={self.dir_angle}")
+
+    def calculate_xy_goal(self, dist):
+        # First, calulate the projection point p from the current robot position (based on the odometry) onto the line of motion.
+        rx = self.x_odom
+        ry = self.y_odom
+        p0x = self.dir_p0[0]
+        p0y = self.dir_p0[1]
+        p1x = self.dir_p1[0]
+        p1y = self.dir_p1[1]
+        v_motion = [p1x - p0x, p1y-p0y]
+        v_motion /= np.linalg.norm(v_motion, 2)
+        v_robot = [rx - p0x, ry-p0y]
+        p = self.dir_p0+v_motion*np.dot(v_robot, v_motion)
+        # Then add a translation of dist, along the line of motion
+        p_goal = p+v_motion*dist
+        return p_goal[0], p_goal[1]
 
     def fake_vel_goals_to_goto_goals(self, x_vel_goal, y_vel_goal, theta_vel_goal):
         # TODO : tune this (linear)
         dx = x_vel_goal
         dy = y_vel_goal
         dtheta = theta_vel_goal
-        mode_changed = self.did_mode_change(dx, dy, dtheta)
         almost_zero = 0.05
+        nb_control_ticks_wait = 10
+        control_goals_updated = True
 
-        if mode_changed:
-            self.save_odom_checkpoint_xy()
+        # self.get_logger().info(
+        #     f"discrete angle={angle}, intensity={intensity}, rotation_on={rotation_on}, direction_changed={direction_changed}, rotation_changed={rotation_changed}")
+        # return False
 
-        if self.only_x:
-            self.x_goal = self.x_odom+(dx * math.cos(self.theta_odom) - dy*math.sin(self.theta_odom))
-            self.y_goal = self.y_odom_checkpoint + \
-                (dx * math.sin(self.theta_odom_checkpoint) + dy*math.cos(self.theta_odom_checkpoint))
-        else:
-            self.x_goal = self.x_odom_checkpoint + \
-                (dx * math.cos(self.theta_odom_checkpoint) - dy*math.sin(self.theta_odom_checkpoint))
-            self.y_goal = self.y_odom+(dx * math.sin(self.theta_odom) + dy*math.cos(self.theta_odom))
-        # if abs(dy) < almost_zero :
-        #     if not(self.no_y) :
-        #         mode_changed=True
-        #         self.reset_odom_now()
-        #     self.no_y = True
-        #     self.y_goal = 0.0
-        # else :
-        #     if self.no_y :
-        #         mode_changed=True
-        #         self.reset_odom_now()
-        #     self.no_y = False
-        #     self.y_goal = self.y_odom+(dx * math.sin(self.theta_odom) + dy *
-        #                             math.cos(self.theta_odom))
+        # IDLE Approach 1, doesn't work well enough, to be tuned ?
+        # if abs(dx) < almost_zero and abs(dy) < almost_zero and abs(dtheta) < almost_zero:
+        #     if not self.stationary_on:
+        #         # We're staying here !
+        #         self.stationary_on = True
+        #     self.nb_control_ticks += 1
 
-        # if abs(dx) < almost_zero :
-        #     if not(self.no_x) :
-        #         mode_changed=True
-        #         self.reset_odom_now()
-        #     self.no_x = True
-        #     self.x_goal = 0.0
-        # else :
-        #     if self.no_x :
-        #         mode_changed=True
-        #         self.reset_odom_now()
-        #     self.no_x = False
-        #     self.x_goal = self.x_odom+(dx * math.cos(self.theta_odom) - dy *
-        #                            math.sin(self.theta_odom))
+        #     if self.nb_control_ticks == nb_control_ticks_wait:
+        #         # If we save the odom point immediatly, the robot goes back a little because the odom tick has not happened yet.
+        #         # So we wait a bit before saving where we are
+        #         self.save_odom_checkpoint_xy()
+        #     if self.nb_control_ticks >= nb_control_ticks_wait:
+        #         # Staying where we stopped
+        #         self.x_goal = self.x_odom_checkpoint
+        #         self.y_goal = self.y_odom_checkpoint
+        #         self.theta_goal = self.theta_odom_checkpoint
+        #         self.x_pid.set_goal(self.x_goal)
+        #         self.y_pid.set_goal(self.y_goal)
+        #         self.theta_pid.set_goal(self.theta_goal)
+        #         return control_goals_updated
+        #     else:
+        #         # Not changing the goals
+        #         return control_goals_updated
+        # # At least one control dimension is non null
+        # self.stationary_on = False
+        # self.nb_control_ticks = 0
 
-        # Always in odom frame
-        # self.theta_goal += dtheta/100.0
+        # IDLE Approach 2
+        # if abs(dx) < almost_zero and abs(dy) < almost_zero and abs(dtheta) < almost_zero:
+        #     if not self.stationary_on:
+        #         # We're staying here !
+        #         self.stationary_on = True
+        #     self.nb_control_ticks += 1
+        # else:
+        #     if self.stationary_on:
+        #         # Going out of the stationary mode creates a checkpoint
+        #         self.save_odom_checkpoint_xy()
+        #     self.stationary_on = False
+        #     self.nb_control_ticks = 0
 
-        if self.theta_null:
-            if abs(dtheta) > almost_zero:
-                self.theta_null = False
-        else:
-            if abs(dtheta) <= almost_zero:
-                self.theta_null = True
-                self.reset_odom_now()
-                self.save_odom_checkpoint_xy()
+        # if self.stationary_on and self.nb_control_ticks == nb_control_ticks_wait:
+        #     self.save_odom_checkpoint()
+        # if self.stationary_on and self.nb_control_ticks >= nb_control_ticks_wait:
+        #     self.x_goal = self.x_odom_checkpoint
+        #     self.y_goal = self.y_odom_checkpoint
+        #     self.theta_goal = self.theta_odom_checkpoint
+        #     self.x_pid.set_goal(self.x_goal)
+        #     self.y_pid.set_goal(self.y_goal)
+        #     self.theta_pid.set_goal(self.theta_goal)
+        # if self.stationary_on:
+        #     # The idle behaviour is : during the nb_control_ticks_wait, the PIDs keep their goals and
+        #     # once the nb_control_ticks_wait is reached, the PIDs goals are updated to the current position of the robot
+        #     return control_goals_updated
 
-        if self.theta_null:
-            self.theta_goal = self.theta_odom_checkpoint
-        else:
-            # V0 no smart correction, everything is open
+        joy_angle, intensity, rotation_on, direction_changed, rotation_changed, is_stationary = self.handle_joy_discretization(
+            dx, dy, dtheta, almost_zero=almost_zero, nb_directions=8)
+
+        # Checking if we need to update our reference points
+        if rotation_changed:
+            # Went from ON to OFF or from OFF to ON
+            self.save_odom_checkpoint_theta()
+
+        # The theta control is independent from x and y
+        if rotation_on:
+            # Applying the joy command (almost no disturbance rejection since the goal is relative to the odometric theta)
             self.theta_goal = self.theta_odom+dtheta
-            self.x_goal = self.x_odom+(dx * math.cos(self.theta_odom) - dy*math.sin(self.theta_odom))
-            self.y_goal = self.y_odom+(dx * math.sin(self.theta_odom) + dy*math.cos(self.theta_odom))
+            # Updating the reference line of motion in odom frame, since a rotation happened and the position of the joy doesn't mean what it used to mean
+            joy_angle_odom_frame = joy_angle + self.theta_goal
+            self.save_direction_checkpoint(joy_angle_odom_frame)
+        else:
+            # Controling to reach the stable goal position (strong disturbance rejection)
+            self.theta_goal = self.theta_odom_checkpoint
+
+        if direction_changed:
+            # Saving the reference point in odom frame
+            self.save_odom_checkpoint_xy()
+            # Saving the reference line of motion in odom frame
+            # We save based on where we want to be (self.theta_goal)
+            joy_angle_odom_frame = joy_angle + self.theta_goal
+            self.save_direction_checkpoint(joy_angle_odom_frame)
+
+        if is_stationary:
+            # Staying where we currently are in XY, letting theta do its thing
+            if not self.stationary_on:
+                self.stationary_on = True
+                self.save_odom_checkpoint_xy()
+                joy_angle_odom_frame = joy_angle + self.theta_goal
+                self.save_direction_checkpoint(joy_angle_odom_frame)
+            self.x_goal = self.x_odom_checkpoint
+            self.y_goal = self.y_odom_checkpoint
+        else:
+            self.stationary_on = False
+            # The X and Y goals will always be on the reference line of motion
+            # How far on the line ? Let's call P the projection point from the current robot position (based on the odometry) onto the line of motion.
+            # The goal position will be 'dist' (e.g. how much the joy was pressed) away from P, on the line of motion.
+            # This is the generalization of the simple case "the only motion is along X, let's set the y_pid goal to 0" to an arbitrary direction of motion.
+            self.x_goal, self.y_goal = self.calculate_xy_goal(intensity)
+            # self.get_logger().info(
+            #     f"self.x_goal={self.x_goal:.2f}, self.y_goal={self.y_goal:.2f}, self.theta_goal={self.theta_goal:.2f}")
+
+        # # V0 no smart correction, everything is open
+        # self.theta_goal = self.theta_odom+dtheta
+        # self.x_goal = self.x_odom+(dx * math.cos(self.theta_odom) - dy*math.sin(self.theta_odom))
+        # self.y_goal = self.y_odom+(dx * math.sin(self.theta_odom) + dy*math.cos(self.theta_odom))
 
         self.x_pid.set_goal(self.x_goal)
         self.y_pid.set_goal(self.y_goal)
         self.theta_pid.set_goal(self.theta_goal)
+
+        return control_goals_updated
 
     def main_tick(self, verbose: bool = False):
         """Main function of the HAL node. This function is made to be called often. Handles the main state machine"""
@@ -1213,14 +1346,18 @@ class ZuuuHAL(Node):
                 x_vel_goal = self.cmd_vel.linear.x
                 y_vel_goal = self.cmd_vel.linear.y
                 theta_vel_goal = self.cmd_vel.angular.z
-                self.fake_vel_goals_to_goto_goals(x_vel_goal, y_vel_goal, theta_vel_goal)
+                control_goals_updated = self.fake_vel_goals_to_goto_goals(x_vel_goal, y_vel_goal, theta_vel_goal)
 
-                x_vel, y_vel, theta_vel = self.position_control()
+                if control_goals_updated:
+                    x_vel, y_vel, theta_vel = self.position_control()
 
-                x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
-                    x_vel, y_vel, theta_vel)
-                wheel_speeds = self.ik_vel(
-                    x_vel, y_vel, theta_vel)
+                    x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
+                        x_vel, y_vel, theta_vel)
+                    wheel_speeds = self.ik_vel(
+                        x_vel, y_vel, theta_vel)
+                else:
+                    wheel_speeds = self.ik_vel(
+                        0.0, 0.0, 0.0)
                 self.send_wheel_commands(wheel_speeds)
             else:
                 # If too much time without an order, the speeds are smoothed back to 0 for safety.
