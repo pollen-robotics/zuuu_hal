@@ -20,6 +20,15 @@
     See params.yaml for the list of ROS parameters.
 """
 
+# TODO
+# - up P translation
+# - remove static friction on joy ?
+# - smooth goto commands.
+# - Safety lidar image
+# TODO
+# translation + rotation marche mal
+# choisir limite vel_xy (pas si grave, la limitation est propre maintenant, je laisse max_duty_cyle: 0.50 pour pas qu'il y ait de déformations).
+
 import os
 import time
 import math
@@ -186,6 +195,8 @@ class ZuuuHAL(Node):
                 ('control_mode', 'OPEN_LOOP'),
                 ('max_accel_xy', 1.0),
                 ('max_accel_theta', 1.0),
+                ('max_speed_xy', 0.5),
+                ('max_speed_theta', 2.0),
                 ('xy_tol', 0.0),
                 ('theta_tol', 0.0),
                 ('smoothing_factor', 5.0),
@@ -233,6 +244,10 @@ class ZuuuHAL(Node):
             'max_accel_xy').get_parameter_value().double_value  # 1.0
         self.max_accel_theta = self.get_parameter(
             'max_accel_theta').get_parameter_value().double_value  # 1.0
+        self.max_speed_xy = self.get_parameter(
+            'max_speed_xy').get_parameter_value().double_value  # 0.5
+        self.max_speed_theta = self.get_parameter(
+            'max_speed_theta').get_parameter_value().double_value  # 2.0
         self.xy_tol = self.get_parameter(
             'xy_tol').get_parameter_value().double_value  # 0.2
         self.theta_tol = self.get_parameter(
@@ -414,6 +429,14 @@ class ZuuuHAL(Node):
                 elif param.name == "max_accel_theta":
                     if param.value >= 0.0:
                         self.max_accel_theta = param.value
+                        success = True
+                elif param.name == "max_speed_xy":
+                    if param.value >= 0.0:
+                        self.max_speed_xy = param.value
+                        success = True
+                elif param.name == "max_speed_theta":
+                    if param.value >= 0.0:
+                        self.max_speed_theta = param.value
                         success = True
                 elif param.name == "xy_tol":
                     if param.value >= 0.0:
@@ -967,9 +990,16 @@ class ZuuuHAL(Node):
         """
         for i in range(len(duty_cycles)):
             if duty_cycles[i] < 0:
-                duty_cycles[i] = max(-self.max_duty_cyle, duty_cycles[i])
+                temp = max(-self.max_duty_cyle, duty_cycles[i])
+                if temp != duty_cycles[i]:
+                    self.get_logger().warning("Duty cycle is LIMITED")
+                duty_cycles[i] = temp
             else:
-                duty_cycles[i] = min(self.max_duty_cyle, duty_cycles[i])
+                temp = min(self.max_duty_cyle, duty_cycles[i])
+                if temp != duty_cycles[i]:
+                    self.get_logger().warning("Duty cycle is LIMITED")
+                duty_cycles[i] = temp
+
         return duty_cycles
 
     def limit_wheel_speeds(self, wheel_speeds: List[float]) -> List[float]:
@@ -982,6 +1012,24 @@ class ZuuuHAL(Node):
                 wheel_speeds[i] = min(
                     self.max_wheel_speed, wheel_speeds[i])
         return wheel_speeds
+
+    def limit_vel_commands(self, x_vel, y_vel, theta_vel):
+        xy_speed = math.sqrt(x_vel**2+y_vel**2)
+        if xy_speed > self.max_speed_xy:
+            # This formula guarantees that the ratio x_vel/y_vel remains the same , while ensuring the xy_speed is equal to max_speed_xy
+            new_x_vel = math.sqrt(self.max_speed_xy**2/(1+(y_vel**2)/(x_vel**2)))
+            new_y_vel = new_x_vel*y_vel/x_vel
+            self.get_logger().warning(
+                f"Requesting xy_speed ({xy_speed}) above maximum ({self.max_speed_xy}). Reducing it to {math.sqrt(new_x_vel**2+new_y_vel**2)}")
+            # The formula can mess up the signs, fixing them here
+            x_vel = sign(x_vel)*new_x_vel/sign(new_x_vel)
+            y_vel = sign(y_vel)*new_y_vel/sign(new_y_vel)
+        if theta_vel > self.max_speed_theta:
+            theta_vel = self.max_speed_theta
+            self.get_logger().warning(
+                f"Requesting theta_speed ({theta_vel}) above maximum ({self.max_speed_theta}). Reducing it.")
+
+        return x_vel, y_vel, theta_vel
 
     def read_measurements(self) -> None:
         """Calls the low level functions to read the measurements on the 3 wheel controllers
@@ -1040,6 +1088,7 @@ class ZuuuHAL(Node):
         y_command_odom = self.y_pid.tick(self.y_odom)
         theta_command_odom = self.theta_pid.tick(
             self.theta_odom, is_angle=True)
+        # self.get_logger().warning(f"theta error: '{self.theta_pid.prev_error:.2f}', command:'{theta_command_odom:.2f}'")
 
         x_command = x_command_odom * \
             math.cos(-self.theta_odom) - y_command_odom * \
@@ -1253,7 +1302,11 @@ class ZuuuHAL(Node):
             self.x_goal = self.x_odom_checkpoint
             self.y_goal = self.y_odom_checkpoint
         else:
-            self.stationary_on = False
+            if self.stationary_on:
+                self.stationary_on = False
+                self.save_odom_checkpoint_xy()
+                joy_angle_odom_frame = joy_angle + self.theta_goal
+                self.save_direction_checkpoint(joy_angle_odom_frame)
             # The X and Y goals will always be on the reference line of motion
             # How far on the line ? Let's call P the projection point from the current robot position (based on the odometry) onto the line of motion.
             # The goal position will be 'dist' (e.g. how much the joy was pressed) away from P, on the line of motion.
@@ -1350,6 +1403,7 @@ class ZuuuHAL(Node):
 
                 if control_goals_updated:
                     x_vel, y_vel, theta_vel = self.position_control()
+                    x_vel, y_vel, theta_vel = self.limit_vel_commands(x_vel, y_vel, theta_vel)
 
                     x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
                         x_vel, y_vel, theta_vel)
