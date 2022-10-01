@@ -3,6 +3,8 @@ import math
 import traceback
 from subprocess import check_output
 from typing import List
+import cv2
+import numpy as np
 
 
 from sensor_msgs.msg import LaserScan
@@ -57,7 +59,7 @@ class LidarSafety:
         self.at_least_one_critical = False
 
     def process_scan(self, msg: LaserScan) -> None:
-        """Takes as input a LaserScan and finds in it the points that could cause a safety 
+        """Takes as input a LaserScan and finds in it the points that could cause a safety
         hazard based on their proximity"""
         self.clear_measures()
         ranges = []
@@ -73,7 +75,7 @@ class LidarSafety:
                 self.unsafe_angles.append(
                     self.create_forbidden_angles(angle, 0.25))
                 continue
-            dist = self.dist_to_point(r, angle)
+            dist, _, _ = self.dist_to_point(r, angle)
             if dist < self.critical_distance and (msg.intensities[i] > 0.1):
                 self.at_least_one_critical = True
                 self.critical_angles.append(
@@ -117,18 +119,69 @@ class LidarSafety:
             return x_vel, y_vel, theta_vel
 
     def dist_to_point(self, r: float, angle: float) -> float:
-        """Calculates the distance between a LIDAR point and the center of the robot. 
+        """Calculates the distance between a LIDAR point and the center of the robot.
         To do this the frame of the point is changed from the LIDAR frame to the base_footprint frame."""
         x = r*math.cos(angle)
         y = r*math.sin(angle)
 
         x = x + self.x_offset
         dist = math.sqrt(x**2 + y**2)
-        return dist
+        return dist, x, y
 
     def create_forbidden_angles(self, angle: float, dist: float) -> List[float]:
-        """Creates a pair [angle, half_forbidden_angle_span]. 
+        """Creates a pair [angle, half_forbidden_angle_span].
         This represents the direction span that could be dangerous based on a LIDAR input"""
         # Half of the forbidden angle span
         beta = abs(math.atan2(self.robot_collision_radius, dist))
         return [angle, beta]
+
+    def create_safety_img(self, msg: LaserScan, range_max: float = 3.0, verbose=True) -> None:
+        if msg is None:
+            return 0, 0
+
+        angle_increment = msg.angle_increment
+        pixel_per_meter = 250
+        image_size = int(range_max * pixel_per_meter)
+        height = image_size
+        width = image_size
+        self.logger.info("Image will be {}x{}".format(width, height))
+        image = np.zeros((height, width, 3), np.uint8)
+        index = -1
+        center_x = int(round(width / 2))
+        center_y = int(round(height/2))
+        sum_x = 0
+        sum_y = 0
+
+        nb_points = 0
+        # Drawing fixed stuff
+        # for i in range(width):
+        #     for j in range(height):
+        #         # angle = math.atan2(i-(width/2), j)
+        #         dist = math.sqrt((center_x-i)**2 + (center_y-j)**2)/pixel_per_meter
+        #         if dist <= 0.5 and dist >= 0.4:
+        #             image[j, i] = (50, 50, 100)  # y, x as always
+        circle_thickness = 2
+        robot_radius = 0.25
+        cv2.circle(image, (center_x, center_y), int(round(robot_radius*pixel_per_meter)), (50, 50, 100), 2)
+        image = cv2.arrowedLine(image, (center_x, center_y), (center_x, center_y -
+                                int(0.75*robot_radius*pixel_per_meter)), (0, 255, 0), 2)
+
+        for i, r in enumerate(msg.ranges):
+            angle = msg.angle_min + i*msg.angle_increment
+            if r < 0.01:
+                # Code value for "no detection". e.g. the lidar filter that filters self collisions
+                continue
+            dist, x_m, y_m = self.dist_to_point(r, angle)
+            if msg.intensities[i] > 0.1:
+
+                x = int(round(center_x - y_m * pixel_per_meter))
+                y = int(round(center_y - x_m * pixel_per_meter))
+                # self.logger.info(f"x={x}, y={y}")
+
+                if x >= 0 and x < width and y >= 0 and y < height:
+                    image[y, x] = (255, 255, 255)  # y, x as always
+
+        if verbose:
+            cv2.imshow("image", image)
+            # cv2.imwrite("raw" + str(datetime.utcnow())+".png", image)
+            cv2.waitKey(1)

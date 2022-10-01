@@ -652,6 +652,8 @@ class ZuuuHAL(Node):
         self.lidar_safety.clear_measures()
         if self.safety_on:
             self.lidar_safety.process_scan(filtered_scan)
+        # Creating the safety image
+        self.lidar_safety.create_safety_img(filtered_scan)
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot: float) -> float:
         """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM
