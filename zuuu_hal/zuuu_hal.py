@@ -26,7 +26,6 @@
 # - smooth goto commands.
 # - Safety lidar image
 # TODO
-# translation + rotation marche mal
 # choisir limite vel_xy (pas si grave, la limitation est propre maintenant, je laisse max_duty_cyle: 0.50 pour pas qu'il y ait de déformations).
 
 import os
@@ -1206,65 +1205,7 @@ class ZuuuHAL(Node):
         almost_zero = 0.05
         nb_control_ticks_wait = 10
         control_goals_updated = True
-
-        # self.get_logger().info(
-        #     f"discrete angle={angle}, intensity={intensity}, rotation_on={rotation_on}, direction_changed={direction_changed}, rotation_changed={rotation_changed}")
-        # return False
-
-        # IDLE Approach 1, doesn't work well enough, to be tuned ?
-        # if abs(dx) < almost_zero and abs(dy) < almost_zero and abs(dtheta) < almost_zero:
-        #     if not self.stationary_on:
-        #         # We're staying here !
-        #         self.stationary_on = True
-        #     self.nb_control_ticks += 1
-
-        #     if self.nb_control_ticks == nb_control_ticks_wait:
-        #         # If we save the odom point immediatly, the robot goes back a little because the odom tick has not happened yet.
-        #         # So we wait a bit before saving where we are
-        #         self.save_odom_checkpoint_xy()
-        #     if self.nb_control_ticks >= nb_control_ticks_wait:
-        #         # Staying where we stopped
-        #         self.x_goal = self.x_odom_checkpoint
-        #         self.y_goal = self.y_odom_checkpoint
-        #         self.theta_goal = self.theta_odom_checkpoint
-        #         self.x_pid.set_goal(self.x_goal)
-        #         self.y_pid.set_goal(self.y_goal)
-        #         self.theta_pid.set_goal(self.theta_goal)
-        #         return control_goals_updated
-        #     else:
-        #         # Not changing the goals
-        #         return control_goals_updated
-        # # At least one control dimension is non null
-        # self.stationary_on = False
-        # self.nb_control_ticks = 0
-
-        # IDLE Approach 2
-        # if abs(dx) < almost_zero and abs(dy) < almost_zero and abs(dtheta) < almost_zero:
-        #     if not self.stationary_on:
-        #         # We're staying here !
-        #         self.stationary_on = True
-        #     self.nb_control_ticks += 1
-        # else:
-        #     if self.stationary_on:
-        #         # Going out of the stationary mode creates a checkpoint
-        #         self.save_odom_checkpoint_xy()
-        #     self.stationary_on = False
-        #     self.nb_control_ticks = 0
-
-        # if self.stationary_on and self.nb_control_ticks == nb_control_ticks_wait:
-        #     self.save_odom_checkpoint()
-        # if self.stationary_on and self.nb_control_ticks >= nb_control_ticks_wait:
-        #     self.x_goal = self.x_odom_checkpoint
-        #     self.y_goal = self.y_odom_checkpoint
-        #     self.theta_goal = self.theta_odom_checkpoint
-        #     self.x_pid.set_goal(self.x_goal)
-        #     self.y_pid.set_goal(self.y_goal)
-        #     self.theta_pid.set_goal(self.theta_goal)
-        # if self.stationary_on:
-        #     # The idle behaviour is : during the nb_control_ticks_wait, the PIDs keep their goals and
-        #     # once the nb_control_ticks_wait is reached, the PIDs goals are updated to the current position of the robot
-        #     return control_goals_updated
-
+        # OK il faut faire du goal_theta quand on rotate pas, et du current sinon.
         joy_angle, intensity, rotation_on, direction_changed, rotation_changed, is_stationary = self.handle_joy_discretization(
             dx, dy, dtheta, almost_zero=almost_zero, nb_directions=8)
 
@@ -1278,7 +1219,10 @@ class ZuuuHAL(Node):
             # Applying the joy command (almost no disturbance rejection since the goal is relative to the odometric theta)
             self.theta_goal = self.theta_odom+dtheta
             # Updating the reference line of motion in odom frame, since a rotation happened and the position of the joy doesn't mean what it used to mean
-            joy_angle_odom_frame = joy_angle + self.theta_goal
+            # When saving a direction based on a reference, there is a non trivial choice between choosing the current orientation (self.theta_odom)
+            # and the goal orientation (self.theta_goal). Here we choose where we 'currently are' since the scene is currenlty rotaton and the pilot would
+            # most likely base his decision on the current view :
+            joy_angle_odom_frame = joy_angle + self.theta_odom
             self.save_direction_checkpoint(joy_angle_odom_frame)
         else:
             # Controling to reach the stable goal position (strong disturbance rejection)
@@ -1288,7 +1232,8 @@ class ZuuuHAL(Node):
             # Saving the reference point in odom frame
             self.save_odom_checkpoint_xy()
             # Saving the reference line of motion in odom frame
-            # We save based on where we want to be (self.theta_goal)
+
+            # Here, we save based on where we want to be (self.theta_goal) to increase the disturbance rejection in rotations
             joy_angle_odom_frame = joy_angle + self.theta_goal
             self.save_direction_checkpoint(joy_angle_odom_frame)
 
@@ -1297,14 +1242,16 @@ class ZuuuHAL(Node):
             if not self.stationary_on:
                 self.stationary_on = True
                 self.save_odom_checkpoint_xy()
-                joy_angle_odom_frame = joy_angle + self.theta_goal
-                self.save_direction_checkpoint(joy_angle_odom_frame)
+                # Useless save ? TODO
+                # joy_angle_odom_frame = joy_angle + self.theta_goal
+                # self.save_direction_checkpoint(joy_angle_odom_frame)
             self.x_goal = self.x_odom_checkpoint
             self.y_goal = self.y_odom_checkpoint
         else:
             if self.stationary_on:
                 self.stationary_on = False
                 self.save_odom_checkpoint_xy()
+                # Here, we save based on where we want to be (self.theta_goal) to increase the disturbance rejection in rotations
                 joy_angle_odom_frame = joy_angle + self.theta_goal
                 self.save_direction_checkpoint(joy_angle_odom_frame)
             # The X and Y goals will always be on the reference line of motion
