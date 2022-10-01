@@ -20,13 +20,7 @@
     See params.yaml for the list of ROS parameters.
 """
 
-# TODO
-# - up P translation
-# - remove static friction on joy ?
-# - smooth goto commands.
 # - Safety lidar image
-# TODO
-# choisir limite vel_xy (pas si grave, la limitation est propre maintenant, je laisse max_duty_cyle: 0.50 pour pas qu'il y ait de déformations).
 
 import os
 import time
@@ -293,12 +287,15 @@ class ZuuuHAL(Node):
             self.safety_distance, self.critical_distance, robot_collision_radius=0.5,
             speed_reduction_factor=0.88, logger=self.get_logger())
 
-        self.x_pid = PID(p=0.0, i=0.00, d=0.0, max_command=0.5,
+        self.x_pid = PID(p=3.0, i=0.00, d=0.0, max_command=0.5,
                          max_i_contribution=0.0)
-        self.y_pid = PID(p=0.0, i=0.00, d=0.0, max_command=0.5,
+        self.y_pid = PID(p=3.0, i=0.00, d=0.0, max_command=0.5,
                          max_i_contribution=0.0)
-        self.theta_pid = PID(p=3.2, i=14.2, d=0.475,
-                             max_command=2.0, max_i_contribution=1.0)
+        self.theta_pid = PID(p=1.0, i=0.0, d=0.00,
+                             max_command=4.0, max_i_contribution=1.0)
+        # "No over-shoot Ziegler Nichols"
+        # self.theta_pid = PID(p=3.2, i=14.2, d=0.475,
+        #                      max_command=4.0, max_i_contribution=1.0)
 
         self.max_wheel_speed = self.pwm_to_wheel_rot_speed(self.max_duty_cyle)
         self.get_logger().info(
@@ -766,7 +763,7 @@ class ZuuuHAL(Node):
 
         return [x_vel, y_vel, theta_vel]
 
-    def filter_speed_goals(self) -> List[float]:
+    def filter_speed_goals(self):
         """Applies a smoothing filter on x_vel_goal, y_vel_goal and theta_vel_goal
         """
         self.x_vel_goal_filtered = (self.x_vel_goal +
@@ -1006,10 +1003,16 @@ class ZuuuHAL(Node):
         """
         for i in range(len(wheel_speeds)):
             if wheel_speeds[i] < 0:
-                wheel_speeds[i] = max(-self.max_wheel_speed, wheel_speeds[i])
+                temp = max(-self.max_wheel_speed, wheel_speeds[i])
+                if temp != wheel_speeds[i]:
+                    self.get_logger().warning("Wheel speed is LIMITED")
+                wheel_speeds[i] = temp
             else:
-                wheel_speeds[i] = min(
+                temp = min(
                     self.max_wheel_speed, wheel_speeds[i])
+                if temp != wheel_speeds[i]:
+                    self.get_logger().warning("Wheel speed is LIMITED")
+                wheel_speeds[i] = temp
         return wheel_speeds
 
     def limit_vel_commands(self, x_vel, y_vel, theta_vel):
@@ -1198,9 +1201,9 @@ class ZuuuHAL(Node):
 
     def fake_vel_goals_to_goto_goals(self, x_vel_goal, y_vel_goal, theta_vel_goal):
         # TODO : tune this (linear)
-        dx = x_vel_goal
-        dy = y_vel_goal
-        dtheta = theta_vel_goal
+        dx = self.x_vel_goal_filtered
+        dy = self.y_vel_goal_filtered
+        dtheta = self.theta_vel_goal_filtered
         almost_zero = 0.001
         nb_control_ticks_wait = 10
         control_goals_updated = True
@@ -1241,9 +1244,13 @@ class ZuuuHAL(Node):
             if not self.stationary_on:
                 self.stationary_on = True
                 self.save_odom_checkpoint_xy()
-                # Useless save ? TODO
-                # joy_angle_odom_frame = joy_angle + self.theta_goal
-                # self.save_direction_checkpoint(joy_angle_odom_frame)
+            if not(rotation_on):
+                # Fully static. Reducing the P to remove the oscillations created by the "steps" of the wheels
+                self.theta_pid = PID(p=0.5, i=0.0, d=0.00, max_command=4.0, max_i_contribution=1.0)
+                self.x_pid = PID(p=1.0, i=0.00, d=0.0, max_command=0.5,
+                                 max_i_contribution=0.0)
+                self.y_pid = PID(p=1.0, i=0.00, d=0.0, max_command=0.5,
+                                 max_i_contribution=0.0)
             self.x_goal = self.x_odom_checkpoint
             self.y_goal = self.y_odom_checkpoint
         else:
@@ -1265,6 +1272,13 @@ class ZuuuHAL(Node):
         # self.theta_goal = self.theta_odom+dtheta
         # self.x_goal = self.x_odom+(dx * math.cos(self.theta_odom) - dy*math.sin(self.theta_odom))
         # self.y_goal = self.y_odom+(dx * math.sin(self.theta_odom) + dy*math.cos(self.theta_odom))
+        if not(is_stationary) or not(rotation_on):
+            # Increasing the P since it's OK while moving
+            self.theta_pid = PID(p=1.0, i=0.0, d=0.00, max_command=4.0, max_i_contribution=1.0)
+            self.x_pid = PID(p=3.0, i=0.00, d=0.0, max_command=0.5,
+                             max_i_contribution=0.0)
+            self.y_pid = PID(p=3.0, i=0.00, d=0.0, max_command=0.5,
+                             max_i_contribution=0.0)
 
         self.x_pid.set_goal(self.x_goal)
         self.y_pid.set_goal(self.y_goal)
@@ -1342,10 +1356,12 @@ class ZuuuHAL(Node):
         elif self.mode is ZuuuModes.CMD_GOTO:
             if (self.cmd_vel is not None) and ((t - self.cmd_vel_t0) < self.cmd_vel_timeout):
                 # Normal case, orders where received
-                x_vel_goal = self.cmd_vel.linear.x
-                y_vel_goal = self.cmd_vel.linear.y
-                theta_vel_goal = self.cmd_vel.angular.z
-                control_goals_updated = self.fake_vel_goals_to_goto_goals(x_vel_goal, y_vel_goal, theta_vel_goal)
+                self.x_vel_goal = self.cmd_vel.linear.x
+                self.y_vel_goal = self.cmd_vel.linear.y
+                self.theta_vel_goal = self.cmd_vel.angular.z
+                self.filter_speed_goals()
+                control_goals_updated = self.fake_vel_goals_to_goto_goals(
+                    self.x_vel_goal, self.y_vel_goal, self.theta_vel_goal)
 
                 if control_goals_updated:
                     x_vel, y_vel, theta_vel = self.position_control()

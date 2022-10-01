@@ -49,7 +49,7 @@ class PID:
         """
         self.goal_value = goal_value
         # Reseting the persistent data because the goal state changed
-        # self.reset()
+        self.reset()
 
     def reset(self) -> None:
         """Resets the integral portion, dt and the differential contribution

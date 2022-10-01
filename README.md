@@ -217,14 +217,13 @@ https://en.wikipedia.org/wiki/Ziegler%E2%80%93Nichols_method
 
 If useful, here are the parameters found for the theta PID:
 
-Rotation :
+#### Rotation PID
 ku=16
 Fu = 2.26Hz
 Tu=0.45
-"No overshoot" :
-=> P = 3.2
-=> Ti=0.225 => I=14.2
-=> Td=0.149 => U=0.475
+"No overshoot" : P = 3.2 I=14.2 U=0.475
+"Classic" (bad idea) : P = 9.6 I=42.6 U=0.54
+
 
 
 
