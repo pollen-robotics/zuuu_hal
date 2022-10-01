@@ -212,14 +212,21 @@ ros2 run zuuu_hal follow_me
 ```
 
 ### Misc
-The Ziegler Nichols method was used to tune the PID values for the GoToXYTheta service. The result was way too dynamic so the parameters are tuned down.
+The Ziegler Nichols method was used to tune the PID values for the GoToXYTheta service. The result was very dynamic and is not used by default.
+https://en.wikipedia.org/wiki/Ziegler%E2%80%93Nichols_method
+
 If useful, here are the parameters found for the theta PID:
 
-Ku = 27
+Rotation :
+ku=16
+Fu = 2.26Hz
+Tu=0.45
+"No overshoot" :
+=> P = 3.2
+=> Ti=0.225 => I=14.2
+=> Td=0.149 => U=0.475
 
-Fu = 2.3 Hz => Tu = 0.4348 s
 
-https://en.wikipedia.org/wiki/Ziegler%E2%80%93Nichols_method
 
 
 ---
@@ -231,3 +238,6 @@ Visit [pollen-robotics.com](https://pollen-robotics.com) to learn more or join o
 ### The worst possible drawing to explain the control principle behind the CMD_GOTO mode
 
 ![worst_drawing](worst_drawing.jpg)
+
+
+### Tuning the PIDs again

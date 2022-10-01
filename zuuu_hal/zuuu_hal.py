@@ -293,12 +293,12 @@ class ZuuuHAL(Node):
             self.safety_distance, self.critical_distance, robot_collision_radius=0.5,
             speed_reduction_factor=0.88, logger=self.get_logger())
 
-        self.x_pid = PID(p=2.0, i=0.00, d=0.0, max_command=0.5,
+        self.x_pid = PID(p=0.0, i=0.00, d=0.0, max_command=0.5,
                          max_i_contribution=0.0)
-        self.y_pid = PID(p=2.0, i=0.00, d=0.0, max_command=0.5,
+        self.y_pid = PID(p=0.0, i=0.00, d=0.0, max_command=0.5,
                          max_i_contribution=0.0)
-        self.theta_pid = PID(p=2.0, i=0.0, d=0.0,
-                             max_command=1.0, max_i_contribution=0.0)
+        self.theta_pid = PID(p=3.2, i=14.2, d=0.475,
+                             max_command=2.0, max_i_contribution=1.0)
 
         self.max_wheel_speed = self.pwm_to_wheel_rot_speed(self.max_duty_cyle)
         self.get_logger().info(
@@ -1087,7 +1087,7 @@ class ZuuuHAL(Node):
         y_command_odom = self.y_pid.tick(self.y_odom)
         theta_command_odom = self.theta_pid.tick(
             self.theta_odom, is_angle=True)
-        # self.get_logger().warning(f"theta error: '{self.theta_pid.prev_error:.2f}', command:'{theta_command_odom:.2f}'")
+        self.get_logger().warning(f"theta error: '{self.theta_pid.prev_error:.2f}', command:'{theta_command_odom:.2f}'")
 
         x_command = x_command_odom * \
             math.cos(-self.theta_odom) - y_command_odom * \
@@ -1103,8 +1103,7 @@ class ZuuuHAL(Node):
         self.goto_service_on = False
         self.speed_service_on = False
 
-    def did_mode_change(self, dx, dy, dtheta):
-        almost_zero = 0.05
+    def did_mode_change(self, dx, dy, dtheta, almost_zero=0.001):
         if self.only_x:
             if abs(dy) > almost_zero:
                 self.only_x = False
@@ -1202,7 +1201,7 @@ class ZuuuHAL(Node):
         dx = x_vel_goal
         dy = y_vel_goal
         dtheta = theta_vel_goal
-        almost_zero = 0.05
+        almost_zero = 0.001
         nb_control_ticks_wait = 10
         control_goals_updated = True
         # OK il faut faire du goal_theta quand on rotate pas, et du current sinon.
