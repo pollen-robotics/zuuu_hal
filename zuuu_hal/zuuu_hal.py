@@ -36,6 +36,7 @@ from typing import List
 from subprocess import check_output
 
 
+from cv_bridge import CvBridge
 import rclpy
 import rclpy.logging
 from rclpy.node import Node
@@ -44,7 +45,7 @@ from pyvesc.VESC import MultiVESC
 from example_interfaces.msg import Float32
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import LaserScan, Image
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 from rclpy.constants import S_TO_NS
 from geometry_msgs.msg import TransformStamped
@@ -286,6 +287,7 @@ class ZuuuHAL(Node):
         self.lidar_safety = LidarSafety(
             self.safety_distance, self.critical_distance, robot_collision_radius=0.5,
             speed_reduction_factor=0.88, logger=self.get_logger())
+        self.cv_bridge = CvBridge()
 
         self.x_pid = PID(p=3.0, i=0.00, d=0.0, max_command=0.5,
                          max_i_contribution=0.0)
@@ -317,6 +319,7 @@ class ZuuuHAL(Node):
         self.scan_sub  # prevent unused variable warning... JESUS WHAT HAVE WE BECOME
         self.scan_pub = self.create_publisher(
             LaserScan, 'scan_filterd', 10)
+        self.lidar_image_pub = self.create_publisher(Image, 'lidar_image', 1)
 
         self.pub_back_wheel_rpm = self.create_publisher(
             Float32, 'back_wheel_rpm', 2)
@@ -652,8 +655,9 @@ class ZuuuHAL(Node):
         self.lidar_safety.clear_measures()
         if self.safety_on:
             self.lidar_safety.process_scan(filtered_scan)
-        # Creating the safety image
-        self.lidar_safety.create_safety_img(filtered_scan)
+        # Publishing the safety image
+        lidar_img = self.lidar_safety.create_safety_img(filtered_scan)
+        self.lidar_image_pub.publish(self.cv_bridge.cv2_to_imgmsg(lidar_img))
 
     def wheel_rot_speed_to_pwm_no_friction(self, rot: float) -> float:
         """Uses a simple linear model to map the expected rotational speed of the wheel to a constant PWM

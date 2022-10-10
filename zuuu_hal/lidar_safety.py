@@ -6,7 +6,6 @@ from typing import List
 import cv2
 import numpy as np
 
-
 from sensor_msgs.msg import LaserScan
 
 from zuuu_hal.utils import angle_diff
@@ -135,7 +134,7 @@ class LidarSafety:
         beta = abs(math.atan2(self.robot_collision_radius, dist))
         return [angle, beta]
 
-    def create_safety_img(self, msg: LaserScan, range_max: float = 3.0, verbose=True) -> None:
+    def create_safety_img(self, msg: LaserScan, range_max: float = 3.0, verbose=False) -> None:
         if msg is None:
             return 0, 0
 
@@ -144,7 +143,6 @@ class LidarSafety:
         image_size = int(range_max * pixel_per_meter)
         height = image_size
         width = image_size
-        self.logger.info("Image will be {}x{}".format(width, height))
         image = np.zeros((height, width, 3), np.uint8)
         index = -1
         center_x = int(round(width / 2))
@@ -185,3 +183,5 @@ class LidarSafety:
             cv2.imshow("image", image)
             # cv2.imwrite("raw" + str(datetime.utcnow())+".png", image)
             cv2.waitKey(1)
+
+        return image
