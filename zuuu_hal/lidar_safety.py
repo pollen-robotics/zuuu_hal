@@ -160,9 +160,9 @@ class LidarSafety:
         #             image[j, i] = (50, 50, 100)  # y, x as always
         circle_thickness = 2
         robot_radius = 0.25
-        cv2.circle(image, (center_x, center_y), int(round(robot_radius*pixel_per_meter)), (50, 50, 100), 2)
+        cv2.circle(image, (center_x, center_y), int(round(robot_radius*pixel_per_meter)), (0, 255, 0), 2)
         image = cv2.arrowedLine(image, (center_x, center_y), (center_x, center_y -
-                                int(0.75*robot_radius*pixel_per_meter)), (0, 255, 0), 2)
+                                int(0.75*robot_radius*pixel_per_meter)), (0, 255, 0), 4)
 
         for i, r in enumerate(msg.ranges):
             angle = msg.angle_min + i*msg.angle_increment
@@ -178,6 +178,11 @@ class LidarSafety:
 
                 if x >= 0 and x < width and y >= 0 and y < height:
                     image[y, x] = (255, 255, 255)  # y, x as always
+                    try:
+                        image[y-1, x-1] = (255, 255, 255)
+                        image[y+1, x+1] = (255, 255, 255)
+                    except IndexError:
+                        pass
 
         if verbose:
             cv2.imshow("image", image)
