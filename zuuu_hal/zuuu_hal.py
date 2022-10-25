@@ -1096,7 +1096,7 @@ class ZuuuHAL(Node):
         y_command_odom = self.y_pid.tick(self.y_odom)
         theta_command_odom = self.theta_pid.tick(
             self.theta_odom, is_angle=True)
-        self.get_logger().warning(f"theta error: '{self.theta_pid.prev_error:.2f}', command:'{theta_command_odom:.2f}'")
+        # self.get_logger().warning(f"theta error: '{self.theta_pid.prev_error:.2f}', command:'{theta_command_odom:.2f}'")
 
         x_command = x_command_odom * \
             math.cos(-self.theta_odom) - y_command_odom * \
@@ -1178,7 +1178,7 @@ class ZuuuHAL(Node):
 
     def save_odom_checkpoint_theta(self):
         self.theta_odom_checkpoint = self.theta_odom
-        self.get_logger().info(f"Theta checkpoint")
+        # self.get_logger().info(f"Theta checkpoint")
 
     def save_direction_checkpoint(self, angle):
         # Saving 2 points to save the unit vector of motion and its line
