@@ -1174,7 +1174,7 @@ class ZuuuHAL(Node):
     def save_odom_checkpoint_xy(self):
         self.x_odom_checkpoint = self.x_odom
         self.y_odom_checkpoint = self.y_odom
-        self.get_logger().info(f"XY checkpoint")
+        # self.get_logger().info(f"XY checkpoint")
 
     def save_odom_checkpoint_theta(self):
         self.theta_odom_checkpoint = self.theta_odom
