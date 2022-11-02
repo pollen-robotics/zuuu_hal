@@ -263,6 +263,8 @@ class ZuuuHAL(Node):
         self.vtheta = 0.0
         self.x_vel = 0.0
         self.y_vel = 0.0
+        self.x_vel_smooth = 0.0
+        self.y_vel_smooth = 0.0
         self.theta_vel = 0.0
         self.x_vel_goal = 0.0
         self.y_vel_goal = 0.0
@@ -954,6 +956,9 @@ class ZuuuHAL(Node):
         self.x_vel, self.y_vel, self.theta_vel = self.dk_vel(self.omnibase.left_wheel_rpm/self.omnibase.half_poles,
                                                              self.omnibase.right_wheel_rpm/self.omnibase.half_poles,
                                                              self.omnibase.back_wheel_rpm/self.omnibase.half_poles)
+        alpha = 0.95
+        self.x_vel_smooth = alpha*self.x_vel_smooth + (1-alpha)*self.x_vel
+        self.y_vel_smooth = alpha*self.y_vel_smooth + (1-alpha)*self.y_vel
         # self.get_logger().info(
         #     "IK vel : {:.2f}, {:.2f}, {:.2f}".format(self.x_vel, self.y_vel, self.theta_vel))
         # Applying the small displacement in the world-fixed odom frame (simple 2D rotation)
@@ -1027,8 +1032,8 @@ class ZuuuHAL(Node):
             # This formula guarantees that the ratio x_vel/y_vel remains the same , while ensuring the xy_speed is equal to max_speed_xy
             new_x_vel = math.sqrt(self.max_speed_xy**2/(1+(y_vel**2)/(x_vel**2)))
             new_y_vel = new_x_vel*y_vel/x_vel
-            # self.get_logger().warning(
-            #     f"Requesting xy_speed ({xy_speed}) above maximum ({self.max_speed_xy}). Reducing it to {math.sqrt(new_x_vel**2+new_y_vel**2)}")
+            self.get_logger().warning(
+                f"Requesting xy_speed ({xy_speed}) above maximum ({self.max_speed_xy}). Reducing it to {math.sqrt(new_x_vel**2+new_y_vel**2)}")
             # The formula can mess up the signs, fixing them here
             x_vel = sign(x_vel)*new_x_vel/sign(new_x_vel)
             y_vel = sign(y_vel)*new_y_vel/sign(new_y_vel)
@@ -1038,6 +1043,29 @@ class ZuuuHAL(Node):
                 f"Requesting theta_speed ({theta_vel}) above maximum ({self.max_speed_theta}). Reducing it.")
 
         return x_vel, y_vel, theta_vel
+
+    def limit_accel(self, x_vel, y_vel, theta_vel):
+        # Were not limiting theta on purpose
+        # Calcultating the accelerations asked based on a smoothed speed estimation
+        dt_duration = (self.measure_timestamp - self.old_measure_timestamp)
+        dt_seconds = dt_duration.nanoseconds/S_TO_NS
+        x_acc = (x_vel - self.x_vel_smooth)/dt_seconds
+        y_acc = (y_vel - self.y_vel_smooth)/dt_seconds
+        if abs(x_acc) > self.max_accel_xy:
+            new_x_vel = self.x_vel_smooth + sign(x_acc)*self.max_accel_xy*dt_seconds
+            self.get_logger().warning(
+                f"Limiting x_vel based on acc. Requested {x_vel:.2f}, limited to {new_x_vel:.2f}")
+        else:
+            new_x_vel = x_vel
+
+        if abs(y_acc) > self.max_accel_xy:
+            new_y_vel = self.y_vel_smooth + sign(y_acc)*self.max_accel_xy*dt_seconds
+            self.get_logger().warning(
+                f"Limiting y_vel based on acc. Requested {y_vel:.2f}, limited to {new_y_vel:.2f}")
+        else:
+            new_y_vel = y_vel
+
+        return new_x_vel, new_y_vel, theta_vel
 
     def read_measurements(self) -> None:
         """Calls the low level functions to read the measurements on the 3 wheel controllers
@@ -1372,6 +1400,7 @@ class ZuuuHAL(Node):
                 if control_goals_updated:
                     x_vel, y_vel, theta_vel = self.position_control()
                     x_vel, y_vel, theta_vel = self.limit_vel_commands(x_vel, y_vel, theta_vel)
+                    x_vel, y_vel, theta_vel = self.limit_accel(x_vel, y_vel, theta_vel)
 
                     x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
                         x_vel, y_vel, theta_vel)
