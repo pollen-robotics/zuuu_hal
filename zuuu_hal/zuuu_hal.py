@@ -1051,6 +1051,9 @@ class ZuuuHAL(Node):
         dt_seconds = dt_duration.nanoseconds/S_TO_NS
         x_acc = (x_vel - self.x_vel_smooth)/dt_seconds
         y_acc = (y_vel - self.y_vel_smooth)/dt_seconds
+        # x_acc = (x_vel - self.x_vel)/dt_seconds
+        # y_acc = (y_vel - self.y_vel)/dt_seconds
+        
         if abs(x_acc) > self.max_accel_xy:
             new_x_vel = self.x_vel_smooth + sign(x_acc)*self.max_accel_xy*dt_seconds
             self.get_logger().warning(
@@ -1125,6 +1128,7 @@ class ZuuuHAL(Node):
         theta_command_odom = self.theta_pid.tick(
             self.theta_odom, is_angle=True)
         # self.get_logger().warning(f"theta error: '{self.theta_pid.prev_error:.2f}', command:'{theta_command_odom:.2f}'")
+        self.get_logger().warning(f"y error: '{self.y_pid.prev_error:.2f}', command:'{y_command_odom:.2f}'")
 
         x_command = x_command_odom * \
             math.cos(-self.theta_odom) - y_command_odom * \
@@ -1281,9 +1285,9 @@ class ZuuuHAL(Node):
             if not(rotation_on):
                 # Fully static. Reducing the P to remove the oscillations created by the "steps" of the wheels
                 self.theta_pid = PID(p=0.5, i=0.0, d=0.00, max_command=4.0, max_i_contribution=1.0)
-                self.x_pid = PID(p=1.0, i=0.00, d=0.0, max_command=0.5,
+                self.x_pid = PID(p=1.0, i=0.00, d=0.0, max_command=1.0,
                                  max_i_contribution=0.0)
-                self.y_pid = PID(p=1.0, i=0.00, d=0.0, max_command=0.5,
+                self.y_pid = PID(p=1.0, i=0.00, d=0.0, max_command=1.0,
                                  max_i_contribution=0.0)
             self.x_goal = self.x_odom_checkpoint
             self.y_goal = self.y_odom_checkpoint
@@ -1399,11 +1403,11 @@ class ZuuuHAL(Node):
 
                 if control_goals_updated:
                     x_vel, y_vel, theta_vel = self.position_control()
-                    x_vel, y_vel, theta_vel = self.limit_vel_commands(x_vel, y_vel, theta_vel)
-                    x_vel, y_vel, theta_vel = self.limit_accel(x_vel, y_vel, theta_vel)
+                    # x_vel, y_vel, theta_vel = self.limit_vel_commands(x_vel, y_vel, theta_vel)
+                    # x_vel, y_vel, theta_vel = self.limit_accel(x_vel, y_vel, theta_vel)
 
-                    x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
-                        x_vel, y_vel, theta_vel)
+                    # x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
+                    #     x_vel, y_vel, theta_vel)
                     wheel_speeds = self.ik_vel(
                         x_vel, y_vel, theta_vel)
                 else:
@@ -1412,6 +1416,7 @@ class ZuuuHAL(Node):
                 self.send_wheel_commands(wheel_speeds)
             else:
                 # If too much time without an order, the speeds are smoothed back to 0 for safety.
+                self.get_logger().warning("Too much time without an order, smoothing back to 0")
                 self.x_vel_goal = 0.0
                 self.y_vel_goal = 0.0
                 self.theta_vel_goal = 0.0

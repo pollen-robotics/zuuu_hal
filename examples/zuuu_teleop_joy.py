@@ -85,7 +85,9 @@ class JoyTeleop(Node):
             self.emergency_shutdown()
         self.get_logger().info("nb joysticks: {}".format(self.nb_joy))
         self.j = pygame.joystick.Joystick(0)
-        self.lin_speed_ratio = 0.15
+        # self.lin_speed_ratio = 0.5
+        self.lin_speed_ratio_x = 2.0
+        self.lin_speed_ratio_y = 0.25
         self.rot_speed_ratio = 1.5
         # The joyticks dont come back at a perfect 0 position when released.
         # Any abs(value) below min_joy_position will be assumed to be 0
@@ -168,18 +170,19 @@ class JoyTeleop(Node):
             self.get_logger().info("Button {:>2} value: {}".format(i, button))
 
     def speeds_from_joystick(self):
-        cycle_max_t = self.lin_speed_ratio  # 0.2*factor
+        cycle_max_x = self.lin_speed_ratio_x  # 0.2*factor
+        cycle_max_y = self.lin_speed_ratio_y  # 0.2*factor
         cycle_max_r = self.rot_speed_ratio  # 0.1*factor
 
         if abs(self.j.get_axis(1)) < self.min_joy_position:
             x = 0.0
         else:
-            x = -self.j.get_axis(1) * cycle_max_t
+            x = -self.j.get_axis(1) * cycle_max_x
 
         if abs(self.j.get_axis(0)) < self.min_joy_position:
             y = 0.0
         else:
-            y = -self.j.get_axis(0) * cycle_max_t
+            y = -self.j.get_axis(0) * cycle_max_y
 
         if abs(self.j.get_axis(3)) < self.min_joy_position:
             rot = 0.0
@@ -187,15 +190,15 @@ class JoyTeleop(Node):
             rot = -self.j.get_axis(3) * cycle_max_r
 
         # Making sure that the xy_speed doesn't go beyond a fixed maximum: (some controllers give (1, 1) when pressed diagonaly instead of (0.5, 0.5)
-        xy_speed = math.sqrt(x**2+y**2)
-        max_speed_xy = cycle_max_t
-        if xy_speed > max_speed_xy:
-            # This formula guarantees that the ratio x/y remains the same, while ensuring the xy_speed is equal to max_speed_xy
-            new_x = math.sqrt(max_speed_xy**2/(1+(y**2)/(x**2)))
-            new_y = new_x*y/x
-            # The formula can mess up the signs, fixing them here
-            x = sign(x)*new_x/sign(new_x)
-            y = sign(y)*new_y/sign(new_y)
+        # xy_speed = math.sqrt(x**2+y**2)
+        # max_speed_xy = cycle_max_x
+        # if xy_speed > max_speed_xy:
+        #     # This formula guarantees that the ratio x/y remains the same, while ensuring the xy_speed is equal to max_speed_xy
+        #     new_x = math.sqrt(max_speed_xy**2/(1+(y**2)/(x**2)))
+        #     new_y = new_x*y/x
+        #     # The formula can mess up the signs, fixing them here
+        #     x = sign(x)*new_x/sign(new_x)
+        #     y = sign(y)*new_y/sign(new_y)
         return x, y, rot
 
     def main_tick(self):
@@ -211,8 +214,8 @@ class JoyTeleop(Node):
         twist.angular.z = theta
         self.pub.publish(twist)
         self.get_logger().info("\nx_vel: {:.2f}m/s, y_vel: {:.2f}m/s, theta_vel: {:.2f}rad/s.\n"
-                               "Max lin_vel: {:.2f}m/s, max rot_vel: {:.2f}rad/s".format(
-                                   x, y, theta, self.lin_speed_ratio, self.rot_speed_ratio))
+                               "Max lin_vel_x: {:.2f}m/s, max lin_vel_y: {:.2f}m/s,  max rot_vel: {:.2f}rad/s".format(
+                                   x, y, theta, self.lin_speed_ratio_x, self.lin_speed_ratio_y, self.rot_speed_ratio))
         # self.print_controller()
         # time.sleep(1.0)
 
