@@ -9,7 +9,7 @@ zuuu_hal:
     control_mode: "OPEN_LOOP"
     max_accel_xy: 1.0
     max_accel_theta: 1.0
-    max_speed_xy: 2.0
+    max_speed_xy: 0.61
     max_speed_theta: 2.0
     xy_tol: 0.0
     theta_tol: 0.0
