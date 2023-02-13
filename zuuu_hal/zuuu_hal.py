@@ -1032,8 +1032,8 @@ class ZuuuHAL(Node):
             # The formula can mess up the signs, fixing them here
             x_vel = sign(x_vel)*new_x_vel/sign(new_x_vel)
             y_vel = sign(y_vel)*new_y_vel/sign(new_y_vel)
-        if theta_vel > self.max_speed_theta:
-            theta_vel = self.max_speed_theta
+        if abs(theta_vel) > self.max_speed_theta:
+            theta_vel = sign(theta_vel)*self.max_speed_theta
             self.get_logger().warning(
                 f"Requesting theta_speed ({theta_vel}) above maximum ({self.max_speed_theta}). Reducing it.")
 
@@ -1210,6 +1210,12 @@ class ZuuuHAL(Node):
         dx = self.x_vel_goal_filtered
         dy = self.y_vel_goal_filtered
         dtheta = self.theta_vel_goal_filtered
+        # Limiting the span of dtheta (if dtheta is allowed beyond PI, the PID will inverse the sign of the rotation, creating a discontinuity in control)
+        max_dtheta = 5*math.pi/6
+        if dtheta > max_dtheta:
+            dtheta = max_dtheta
+        elif dtheta < -max_dtheta:
+            dtheta = -max_dtheta
         almost_zero = 0.001
         nb_control_ticks_wait = 10
         control_goals_updated = True
@@ -1228,7 +1234,7 @@ class ZuuuHAL(Node):
             self.theta_goal = self.theta_odom+dtheta
             # Updating the reference line of motion in odom frame, since a rotation happened and the position of the joy doesn't mean what it used to mean
             # When saving a direction based on a reference, there is a non trivial choice between choosing the current orientation (self.theta_odom)
-            # and the goal orientation (self.theta_goal). Here we choose where we 'currently are' since the scene is currenlty rotaton and the pilot would
+            # and the goal orientation (self.theta_goal). Here we choose where we 'currently are' since the scene is currently rotating and the pilot would
             # most likely base his decision on the current view :
             joy_angle_odom_frame = joy_angle + self.theta_odom
             self.save_direction_checkpoint(joy_angle_odom_frame)
@@ -1371,10 +1377,15 @@ class ZuuuHAL(Node):
 
                 if control_goals_updated:
                     x_vel, y_vel, theta_vel = self.position_control()
+                    # self.get_logger().warning(f"post position control theta_vel {theta_vel:.2f}")
+
                     x_vel, y_vel, theta_vel = self.limit_vel_commands(x_vel, y_vel, theta_vel)
+                    # self.get_logger().warning(f"post limit vel control theta_vel {theta_vel:.2f}")
 
                     x_vel, y_vel, theta_vel = self.lidar_safety.safety_check_speed_command(
                         x_vel, y_vel, theta_vel)
+                    # self.get_logger().warning(f"post safety check theta_vel {theta_vel:.2f}")
+
                     wheel_speeds = self.ik_vel(
                         x_vel, y_vel, theta_vel)
                 else:
